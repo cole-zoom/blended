@@ -201,20 +201,51 @@ file keeps saying `"material": "stone"`.
 
 ---
 
-## Phase 3 — Verification & diagnostics
-*Turn `goal.md` into a test suite. Make failures machine-actionable.*
+## Phase 3 — Staged pipeline + verification
+*Formalise the workflow that actually produced everything so far.*
 
-- [ ] Tier 1 static: schema, targets resolve, **channel conflicts**, duration fits
-- [ ] Tier 2 probes in-Blender: `screen_coverage`, `in_frame`, `distance_to`, `azimuth_over_time`,
-      `energy_over_time`, manifold, light-aim
-- [ ] Wire `goal/acceptance.md`'s 36 assertions to real probes
-- [ ] **`diagnostics.py` — structured JSON errors with `suggested_fix` patches** (ARCHITECTURE §12).
-      This is the agent's primary interface. Build it properly
-- [ ] Probe report artifact per build
+Originally scoped as verification alone. Restructured after Phase 2.5, because the session that
+built the LanceDB animation demonstrated the real lesson: **nothing here is one-shot.** The logo
+outline took ten iterations and two wrong conclusions; lighting took four rounds; the ground
+material was rejected outright; the flicker took three diagnostic passes.
+
+Verification is not the structure — it is what makes each *gate* trustworthy. The structure is
+five stages, each ending at a human check-in (ARCHITECTURE §11a).
+
+### 3a — Stage machinery
+
+- [ ] `stages.py` — the five stages, and the IR fields each one owns
+- [ ] **Overrides per stage**: clay materials for `blocking`, neutral reference light for
+      `materials`. Suppression is the point — you cannot judge timing through a finished look
+- [ ] `blended stage <name>` — build, probe, render at that stage's fidelity, stop
+- [ ] Approval ledger: hash the fields a stage owns; `blended approve <stage>`
+- [ ] **Drift detection** — warn and require re-approval when an approved stage's inputs move,
+      naming exactly what changed
+- [ ] Skip rebuilding upstream stages that are approved and unchanged
+
+### 3b — Verification (the original Phase 3)
+
+- [ ] Tier 1 static: schema, targets resolve, **channel conflicts**, duration fits *(mostly done
+      in Phase 2)*
+- [ ] Tier 2 probes in-Blender, **routed per stage**: geometry probes at `assets`; `screen_coverage`,
+      `in_frame`, `distance_to`, `azimuth_over_time`, `energy_over_time` at `blocking`; texture and
+      colourspace at `materials`; flicker and contrast at `lighting`
+- [ ] Wire `goal/acceptance.md` to real probes *(treat as the current working target, not a fixed
+      spec — it will move as the project does)*
+- [ ] **`diagnostics.py` — structured JSON errors with `suggested_fix` patches** (ARCHITECTURE §12)
+- [ ] Probe report per stage
 - [ ] Contact-sheet generation
 
-**Done when:** deliberately breaking `scene.json` (orbit too wide, light ramp inverted) is caught
-*before* rendering, with a diagnostic naming the track and proposing a patch.
+### 3c — Render robustness
+
+- [ ] **PNG sequence + encode step.** An mp4 needs its trailing atom, so an interrupted render
+      currently loses everything — a timeout kill cost a full hour of Cycles this session. A frame
+      sequence survives interruption and lets a restart skip completed frames
+- [ ] Progress reporting from frame logs
+- [ ] Flicker metric (`temporal second difference`) as a standing probe, not a one-off script
+
+**Done when:** `blended stage blocking` renders clay motion in ~2 minutes with a probe report, and
+changing a material afterwards cannot silently move the camera.
 
 ---
 

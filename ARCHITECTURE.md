@@ -411,6 +411,70 @@ finds out whether it got it right.
 
 ---
 
+## 11a. The staged pipeline — the organising structure
+
+**Nothing in this project has ever been one-shot.** The logo outline took ten iterations and two
+wrong conclusions. The lighting took four rounds. The ground material was rejected once outright.
+The water flicker took three diagnostic passes. Every good result came from building a little,
+showing it, and adjusting.
+
+So the pipeline is built that way on purpose: **five stages, each ending at a human gate.**
+
+| Stage | Question it answers | Renders | Deliberately suppresses | Cost |
+|---|---|---|---|---|
+| 1 · `assets` | Is the model right? | stills / turntable | lighting, motion, materials | seconds |
+| 2 · `blocking` | Does the motion and timing work? | full motion, 480p, **clay** | materials, floor, environment | ~2 min |
+| 3 · `materials` | What is everything made of? | key stills, **neutral reference light** | the scene's real lighting | ~1 min |
+| 4 · `lighting` | Is the mood right? | full motion, 720p EEVEE | — | ~7 min |
+| 5 · `final` | Ship it | Cycles, 1080p | — | ~80 min |
+
+### Two principles make this work
+
+**Render fidelity matches the decision, not the ambition.** Judging camera timing does not need
+materials, and paying 80 minutes to find out the camera is wrong is the failure mode this exists
+to prevent.
+
+**Each stage suppresses what is not yet being decided.** This is the non-obvious half. Stage 2
+forces flat clay materials *even when real ones exist*, because if you can see the materials you
+will judge the look and miss that the timing is wrong. Blocking passes are grey in every animation
+studio for exactly this reason — suppression is a feature, not a limitation.
+
+The same logic drives stage 3's **neutral reference light**: materials are authored under a known
+flat environment, so "is this concrete or is that just the orange HDRI?" cannot arise. That
+question cost a full round in practice.
+
+### Stage ownership of the IR
+
+Each Scene IR field belongs to exactly one stage. That mapping is what makes gates meaningful —
+without it, "has this stage changed?" is unanswerable.
+
+| Stage | Owns |
+|---|---|
+| `assets` | `assets[].{source, extrude, bevel, resolution, target_size}` |
+| `blocking` | `timeline`, `camera`, `tracks`, light `{type, azimuth, elevation, distance, spot_size}` |
+| `materials` | asset `{material, base_color, roughness, metallic, wear, wetness, droplets}`, `outline`, floor `{material, texture, scale, wetness, bump, wet_*}` |
+| `lighting` | light `{energy, color, radius}`, ramp track params, `world`, `environment.volumetrics`, `post` |
+| `final` | render settings only — engine, samples, resolution |
+
+Light *position* is blocking (it is composition); light *intensity and colour* are lighting (it is
+mood). Splitting one object across two stages is a judgement call, but the alternative — putting
+all lighting in one stage — means you cannot block a shot without also deciding its mood.
+
+### Approval and drift
+
+An approved stage records a hash of the fields it owns. When a later edit changes those fields,
+the pipeline **warns and requires re-approval**, naming exactly what moved.
+
+This is the "don't regenerate everything" concern from the project's first conversation, finally
+landing somewhere concrete: approved work cannot silently regress, and changing a material can
+never quietly move the camera. It also makes iteration cheap — approving blocking means stage 3
+edits no longer rebuild stages 1 and 2.
+
+Re-approval warns rather than hard-blocks, because upstream changes are often deliberate. The
+point is that they are never *invisible*.
+
+---
+
 ## 12. The agent in v1 is Claude Code — so the CLI *is* the agent interface
 
 v1 has **no API calls and no `agent/` module.** The planner and patcher are Claude Code, working in
