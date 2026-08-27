@@ -91,25 +91,34 @@ def make_stage_job(scene: SceneIR, stage, *, out_dir: Path,
     ir = resolve_textures(ir, Path(cache_root or ".cache"))
 
     width, height = stage.resolution
-    suffix = "mp4" if stage.media == "video" else ""
     stem = f"{scene.name}_{stage.name}"
-    output = out_dir / (f"{stem}.{suffix}" if suffix else f"{stem}_")
+
+    render = {
+        "engine": "CYCLES" if stage.engine == "cycles" else "BLENDER_EEVEE",
+        "device": "GPU",
+        "resolution": [width, height],
+        "fps": scene.timeline.fps,
+        "frame_start": 1,
+        "frame_end": scene.timeline.frames,
+        "frame_step": stage.frame_step,
+        "samples": stage.samples,
+        "media": stage.media,
+    }
+    if stage.media == "sequence":
+        # Frames land in their own directory so a resume can find them unambiguously, and the
+        # encoded video sits alongside rather than among them.
+        frames_dir = out_dir / f"{stem}_frames"
+        render["output"] = str(frames_dir / "f")
+        render["encode_to"] = str(out_dir / f"{stem}.mp4")
+    elif stage.media == "video":
+        render["output"] = str(out_dir / f"{stem}.mp4")
+    else:
+        render["output"] = str(out_dir / f"{stem}_")
 
     return {
         "blend_out": str(out_dir / f"{stem}.blend"),
         "scene": {"kind": "scene_ir", "ir": ir},
-        "render": {
-            "engine": "CYCLES" if stage.engine == "cycles" else "BLENDER_EEVEE",
-            "device": "GPU",
-            "resolution": [width, height],
-            "fps": scene.timeline.fps,
-            "frame_start": 1,
-            "frame_end": scene.timeline.frames,
-            "frame_step": stage.frame_step,
-            "samples": stage.samples,
-            "media": stage.media,
-            "output": str(output),
-        },
+        "render": render,
         "probes": list(stage.probes),
     }
 

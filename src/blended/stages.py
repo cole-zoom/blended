@@ -181,6 +181,8 @@ class Stage:
     #: Applied in order to a *copy* of the IR before building.
     suppress: tuple[str, ...] = ()
     engine: str = "eevee"
+    #: "stills" | "video" | "sequence". `sequence` renders resumable PNGs then encodes, and is
+    #: the right choice for anything long enough that losing it would hurt.
     media: str = "stills"
     resolution: tuple[int, int] = (960, 540)
     samples: int = 16
@@ -260,7 +262,8 @@ STAGES: dict[str, Stage] = {
             question="Ship it",
             owns=(),
             engine="cycles",
-            media="video",
+            # The only stage long enough for interruption to be expensive.
+            media="sequence",
             resolution=(1920, 1080),
             samples=128,
             probes=("framing", "motion", "light", "materials"),

@@ -481,6 +481,38 @@ def contact_sheet_cmd(pattern: str, out: Path | None, columns: int, max_frames: 
                f"grid -> {stats['output']}{_size(Path(stats['output']))}")
 
 
+@main.command("flicker")
+@click.argument("pattern")
+@click.option("--limit", type=int, default=24, show_default=True,
+              help="Frames to sample across the sequence.")
+def flicker_cmd(pattern: str, limit: int) -> None:
+    """Measure temporal flicker in a rendered frame sequence.
+
+    Uses the second temporal difference, so smooth camera motion cancels and only non-smooth
+    change — popping highlights, shimmer — is reported. A plain frame-to-frame difference
+    cannot tell the two apart.
+    """
+    job = {
+        "scene": {"kind": "flicker", "pattern": str(pattern), "limit": limit},
+        "render": {"output": ""},
+    }
+    try:
+        result = run_job(job)
+    except BlendedError as exc:
+        _fail(exc)
+        return
+
+    stats = result.stats
+    if error := stats.get("error"):
+        click.echo(f"{click.style('✗', fg='red')} {error}", err=True)
+        sys.exit(1)
+    click.echo(f"{_ok()} {stats['frames']} frames sampled")
+    click.echo(f"  mean     {stats['mean'] * 1000:.3f}e-3")
+    click.echo(f"  p99.9    {stats['p99_9']:.4f}   (the number that matters — "
+               "flicker lives in few, bright pixels)")
+    click.echo(f"  worst    {stats['worst_p99_9']:.4f}")
+
+
 @main.command("approve")
 @click.argument("stage_name", type=click.Choice(list(_STAGE_ORDER)))
 @click.argument("scene_file", type=click.Path(exists=True, path_type=Path))

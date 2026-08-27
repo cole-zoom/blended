@@ -209,11 +209,16 @@ def test_scenes_are_isolated_in_the_ledger(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("name", STAGE_ORDER)
-def test_video_stages_never_skip_frames(name: str) -> None:
+def test_motion_stages_never_skip_frames(name: str) -> None:
     """A stepped video plays back at the wrong speed."""
     stage = get(name)
-    if stage.media == "video":
+    if stage.media in ("video", "sequence"):
         assert stage.frame_step == 1
+
+
+def test_the_long_stage_renders_a_resumable_sequence() -> None:
+    """`final` is the only stage where losing an interrupted render actually hurts."""
+    assert get("final").media == "sequence"
 
 
 def test_stages_before_lighting_drop_compositing() -> None:
