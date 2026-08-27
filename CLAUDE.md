@@ -81,8 +81,33 @@ blender/                Blender source clone. gitignored. API oracle only, NOT a
 ## Commands
 
 ```bash
-uv sync                     # install
-uv run blended doctor       # verify Blender bridge
-uv run blended render-demo  # phase 0 smoke test → .blend + mp4
+uv sync                                   # install
+uv run blended doctor                     # verify the Blender bridge
+uv run blended new NAME --asset logo.svg  # scaffold a project that already renders
+uv run blended schema                     # regenerate schemas/ from the live models
 uv run pytest
 ```
+
+Then the staged workflow — see [docs/authoring.md](docs/authoring.md):
+
+```bash
+uv run blended stage assets   scene.json   # clay turntable, ~3s
+uv run blended approve assets scene.json
+uv run blended stage blocking scene.json   # motion, clay, ~2min
+uv run blended stage lighting scene.json   # mood, ~7min
+uv run blended stage final    scene.json   # Cycles, resumable
+uv run blended status         scene.json
+```
+
+## Where things are documented
+
+| For | Read |
+|---|---|
+| Writing a scene | [docs/authoring.md](docs/authoring.md) — the traps, not just the fields |
+| Field reference | `schemas/` — generated, never hand-edited |
+| Why it is shaped this way | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| What is built and what is next | [ROADMAP.md](ROADMAP.md) |
+
+**No L1 "intent" IR, deliberately.** The roadmap made it conditional on Phase 2 showing a need
+for a semantic layer above Scene IR; it did not. Hand-authoring Scene IR was comfortable
+throughout, and every production edit was a direct field change.

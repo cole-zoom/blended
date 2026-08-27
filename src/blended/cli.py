@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -371,6 +372,72 @@ def _print_diagnostics(report) -> None:
             click.echo(f"    {diag.hint}")
         if diag.suggested_fix:
             click.echo(f"    fix: {json.dumps(diag.suggested_fix)}")
+
+
+@main.command("new")
+@click.argument("name")
+@click.option("--asset", "asset", type=click.Path(exists=True, path_type=Path), required=True,
+              help="Vector source for the subject (SVG).")
+@click.option("--into", type=click.Path(path_type=Path), default=Path("projects"),
+              show_default=True, help="Parent directory for the project.")
+@click.option("--duration", type=float, default=8.0, show_default=True)
+@click.option("--fps", type=int, default=30, show_default=True)
+@click.option("--force", is_flag=True, help="Overwrite an existing scene.json.")
+def new_cmd(name: str, asset: Path, into: Path, duration: float, fps: int,
+            force: bool) -> None:
+    """Scaffold a new project with a scene that already renders something."""
+    from blended.contract import scaffold, validate_scaffold
+    from blended.verify.static import check as run_check
+
+    project = Path(into) / name
+    scene_file = project / "scene.json"
+    if scene_file.exists() and not force:
+        click.echo(f"{click.style('✗', fg='red')} {scene_file} exists (use --force)", err=True)
+        sys.exit(1)
+
+    # Relative to the scene file, so a project that keeps its assets nearby stays portable.
+    # An asset outside the project tree is not portable regardless, and a long "../../../.."
+    # chain only obscures where the file actually is — so record the absolute path instead.
+    try:
+        source = os.path.relpath(asset.resolve(), project.resolve())
+        if source.count("..") > 2:
+            source = str(asset.resolve())
+    except ValueError:  # different drive on Windows
+        source = str(asset.resolve())
+
+    data = scaffold(name, source, duration=duration, fps=fps)
+    scene = validate_scaffold(data)
+    report = run_check(scene)
+    if not report.ok:
+        _print_diagnostics(report)
+        click.echo("\nScaffold failed its own checker — this is a bug.", err=True)
+        sys.exit(1)
+
+    project.mkdir(parents=True, exist_ok=True)
+    scene_file.write_text(json.dumps(data, indent=2) + "\n")
+
+    click.echo(f"{_ok()} {scene_file}")
+    click.echo(f"  {scene.timeline.duration}s @ {scene.timeline.fps}fps "
+               f"= {scene.timeline.frames} frames, {len(scene.tracks)} tracks")
+    click.echo("\nNext:")
+    click.echo(f"  blended stage assets {scene_file}      # is the model right?")
+    click.echo(f"  blended approve assets {scene_file}")
+    click.echo(f"  blended stage blocking {scene_file}    # does the motion work?")
+
+
+@main.command("schema")
+@click.option("--out", type=click.Path(path_type=Path), default=Path("schemas"),
+              show_default=True)
+def schema_cmd(out: Path) -> None:
+    """Export the authoring contract: scene schema, action library, stage definitions.
+
+    Generated from the same models the compiler uses, so the published contract cannot drift
+    from the thing it describes.
+    """
+    from blended.contract import write_schemas
+
+    for path in write_schemas(out):
+        click.echo(f"{_ok()} {path}{_size(path)}")
 
 
 @main.command("stage")

@@ -11,7 +11,17 @@ verifies the result against your stated intent, and emits a `.blend` plus a vide
 
 ## Status
 
-Planning. No implementation yet.
+Phases 0–4 built. A staged pipeline with human gates, Tier-1/Tier-2 verification, resumable
+Cycles renders, and a documented authoring contract.
+
+```bash
+uv sync
+uv run blended doctor
+uv run blended new myproject --asset logo.svg
+uv run blended stage assets projects/myproject/scene.json
+```
+
+Start with **[docs/authoring.md](docs/authoring.md)**.
 
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** — the design and why
 - **[ROADMAP.md](ROADMAP.md)** — phases, in build order

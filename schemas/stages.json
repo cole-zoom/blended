@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Five stages, each answering one question and ending at a human gate. `owns` is the set of IR paths that stage is responsible for \u2014 approving a stage freezes exactly those, and later changes to them warn.",
+  "order": [
+    "assets",
+    "blocking",
+    "materials",
+    "lighting",
+    "final"
+  ],
+  "stages": {
+    "assets": {
+      "engine": "eevee",
+      "media": "stills",
+      "owns": [
+        "assets[].id",
+        "assets[].source",
+        "assets[].extrude",
+        "assets[].bevel",
+        "assets[].resolution",
+        "assets[].target_size"
+      ],
+      "probes": [
+        "geometry"
+      ],
+      "question": "Is the model right?",
+      "resolution": [
+        720,
+        720
+      ],
+      "suppresses": [
+        "environment",
+        "materials",
+        "lighting",
+        "post",
+        "turntable"
+      ]
+    },
+    "blocking": {
+      "engine": "eevee",
+      "media": "video",
+      "owns": [
+        "timeline",
+        "camera",
+        "tracks",
+        "lights[].id",
+        "lights[].type",
+        "lights[].azimuth",
+        "lights[].elevation",
+        "lights[].distance",
+        "lights[].spot_size",
+        "environment.floor.enabled",
+        "environment.floor.size",
+        "environment.floor.offset"
+      ],
+      "probes": [
+        "framing",
+        "motion"
+      ],
+      "question": "Does the motion and timing work?",
+      "resolution": [
+        640,
+        360
+      ],
+      "suppresses": [
+        "environment",
+        "materials",
+        "post"
+      ]
+    },
+    "final": {
+      "engine": "cycles",
+      "media": "sequence",
+      "owns": [],
+      "probes": [
+        "framing",
+        "motion",
+        "light",
+        "materials"
+      ],
+      "question": "Ship it",
+      "resolution": [
+        1920,
+        1080
+      ],
+      "suppresses": []
+    },
+    "lighting": {
+      "engine": "eevee",
+      "media": "video",
+      "owns": [
+        "lights[].energy",
+        "lights[].color",
+        "lights[].radius",
+        "lights[].spot_blend",
+        "lights[].angle",
+        "lights[].size",
+        "world",
+        "environment.volumetrics",
+        "post"
+      ],
+      "probes": [
+        "framing",
+        "light"
+      ],
+      "question": "Is the mood right?",
+      "resolution": [
+        1280,
+        720
+      ],
+      "suppresses": []
+    },
+    "materials": {
+      "engine": "eevee",
+      "media": "stills",
+      "owns": [
+        "assets[].material",
+        "assets[].base_color",
+        "assets[].roughness",
+        "assets[].metallic",
+        "assets[].wear",
+        "assets[].wetness",
+        "assets[].droplets",
+        "assets[].outline",
+        "environment.floor.material",
+        "environment.floor.texture",
+        "environment.floor.texture_resolution",
+        "environment.floor.scale",
+        "environment.floor.wetness",
+        "environment.floor.bump",
+        "environment.floor.wet_roughness",
+        "environment.floor.wet_flatten",
+        "environment.floor.ripples",
+        "environment.floor.ripple_scale",
+        "environment.floor.ripple_speed",
+        "environment.floor.ripple_detail"
+      ],
+      "probes": [
+        "materials"
+      ],
+      "question": "What is everything made of?",
+      "resolution": [
+        1280,
+        720
+      ],
+      "suppresses": [
+        "lighting"
+      ]
+    }
+  },
+  "title": "blended pipeline stages"
+}
