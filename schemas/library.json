@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "actions": {
+    "camera.orbit": {
+      "accepts": [
+        "camera"
+      ],
+      "params": {
+        "additionalProperties": false,
+        "description": "Sweep the camera around a target, optionally rising and pulling away as it goes.\n\nImplemented as a rotating pivot with the camera parented to it. Azimuth is the pivot's\nrotation; elevation and distance are the camera's local position on that pivot. Keeping the\nsweep on a parent means a *constant-distance* orbit stays exactly circular no matter what\neasing is applied, rather than depending on interpolation between sampled positions.\n\nElevation and distance default to constant (end == start), so a plain orbit needs no extra\nparameters.",
+        "properties": {
+          "distance": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Base distance. Auto-framed from the asset when null.",
+            "title": "Distance"
+          },
+          "easing": {
+            "default": "ease_in_out",
+            "enum": [
+              "linear",
+              "ease_in",
+              "ease_out",
+              "ease_in_out"
+            ],
+            "title": "Easing",
+            "type": "string"
+          },
+          "end_azimuth": {
+            "default": 30.0,
+            "title": "End Azimuth",
+            "type": "number"
+          },
+          "end_distance_scale": {
+            "default": 1.0,
+            "description": "Multiplier at the end. >1 pulls the camera away.",
+            "exclusiveMinimum": 0,
+            "title": "End Distance Scale",
+            "type": "number"
+          },
+          "end_elevation": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Defaults to start_elevation (constant height).",
+            "title": "End Elevation"
+          },
+          "start_azimuth": {
+            "default": -30.0,
+            "description": "Degrees. 0 faces the asset head-on.",
+            "title": "Start Azimuth",
+            "type": "number"
+          },
+          "start_distance_scale": {
+            "default": 1.0,
+            "description": "Multiplier on the base distance at the start.",
+            "exclusiveMinimum": 0,
+            "title": "Start Distance Scale",
+            "type": "number"
+          },
+          "start_elevation": {
+            "default": 12.0,
+            "description": "Degrees above the horizon.",
+            "title": "Start Elevation",
+            "type": "number"
+          }
+        },
+        "title": "OrbitParams",
+        "type": "object"
+      },
+      "tags": [
+        "camera",
+        "reveal",
+        "cinematic"
+      ],
+      "timing": "stretchable",
+      "writes": [
+        "transform"
+      ]
+    },
+    "light.ramp": {
+      "accepts": [
+        "light"
+      ],
+      "params": {
+        "additionalProperties": false,
+        "description": "Animate a light's energy. The goal's 'dim to bright'.",
+        "properties": {
+          "easing": {
+            "default": "ease_in_out",
+            "enum": [
+              "linear",
+              "ease_in",
+              "ease_out",
+              "ease_in_out"
+            ],
+            "title": "Easing",
+            "type": "string"
+          },
+          "end_energy": {
+            "minimum": 0,
+            "title": "End Energy",
+            "type": "number"
+          },
+          "start_energy": {
+            "minimum": 0,
+            "title": "Start Energy",
+            "type": "number"
+          }
+        },
+        "required": [
+          "start_energy",
+          "end_energy"
+        ],
+        "title": "LightRampParams",
+        "type": "object"
+      },
+      "tags": [
+        "light",
+        "reveal",
+        "mood"
+      ],
+      "timing": "stretchable",
+      "writes": [
+        "energy"
+      ]
+    },
+    "object.hold": {
+      "accepts": [
+        "asset",
+        "camera",
+        "light"
+      ],
+      "params": {
+        "additionalProperties": false,
+        "description": "Occupy a span without animating anything.\n\nExists so a gap in the timeline can be deliberate and visible in the IR rather than implied.",
+        "properties": {},
+        "title": "HoldParams",
+        "type": "object"
+      },
+      "tags": [
+        "timing"
+      ],
+      "timing": "stretchable",
+      "writes": []
+    },
+    "object.spin": {
+      "accepts": [
+        "asset"
+      ],
+      "params": {
+        "additionalProperties": false,
+        "properties": {
+          "axis": {
+            "default": "z",
+            "enum": [
+              "x",
+              "y",
+              "z"
+            ],
+            "title": "Axis",
+            "type": "string"
+          },
+          "easing": {
+            "default": "linear",
+            "enum": [
+              "linear",
+              "ease_in",
+              "ease_out",
+              "ease_in_out"
+            ],
+            "title": "Easing",
+            "type": "string"
+          },
+          "turns": {
+            "default": 1.0,
+            "title": "Turns",
+            "type": "number"
+          }
+        },
+        "title": "SpinParams",
+        "type": "object"
+      },
+      "tags": [
+        "object",
+        "motion"
+      ],
+      "timing": "stretchable",
+      "writes": [
+        "transform"
+      ]
+    }
+  },
+  "description": "The closed vocabulary a scene composes from. `writes` lists the channels an action animates; two tracks writing the same channel of the same target over overlapping frames is a CHANNEL_CONFLICT.",
+  "title": "blended action library"
+}

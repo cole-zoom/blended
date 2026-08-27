@@ -1,0 +1,743 @@
+{
+  "$defs": {
+    "Asset": {
+      "additionalProperties": false,
+      "properties": {
+        "base_color": {
+          "default": [
+            0.92,
+            0.92,
+            0.94,
+            1.0
+          ],
+          "maxItems": 4,
+          "minItems": 4,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Base Color",
+          "type": "array"
+        },
+        "bevel": {
+          "default": 0.004,
+          "minimum": 0,
+          "title": "Bevel",
+          "type": "number"
+        },
+        "droplets": {
+          "default": 0.0,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Droplets",
+          "type": "number"
+        },
+        "extrude": {
+          "default": 0.05,
+          "exclusiveMinimum": 0,
+          "title": "Extrude",
+          "type": "number"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "material": {
+          "default": "plain",
+          "enum": [
+            "plain",
+            "worn"
+          ],
+          "title": "Material",
+          "type": "string"
+        },
+        "metallic": {
+          "default": 0.0,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Metallic",
+          "type": "number"
+        },
+        "outline": {
+          "$ref": "#/$defs/Outline"
+        },
+        "resolution": {
+          "default": 12,
+          "exclusiveMinimum": 0,
+          "title": "Resolution",
+          "type": "integer"
+        },
+        "roughness": {
+          "default": 0.35,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Roughness",
+          "type": "number"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "target_size": {
+          "default": 1.0,
+          "exclusiveMinimum": 0,
+          "title": "Target Size",
+          "type": "number"
+        },
+        "wear": {
+          "default": 0.5,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Wear",
+          "type": "number"
+        },
+        "wetness": {
+          "default": 0.0,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Wetness",
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "source"
+      ],
+      "title": "Asset",
+      "type": "object"
+    },
+    "Camera": {
+      "additionalProperties": false,
+      "properties": {
+        "clip_end": {
+          "default": 1000.0,
+          "exclusiveMinimum": 0,
+          "title": "Clip End",
+          "type": "number"
+        },
+        "clip_start": {
+          "default": 0.01,
+          "exclusiveMinimum": 0,
+          "title": "Clip Start",
+          "type": "number"
+        },
+        "dof": {
+          "$ref": "#/$defs/DepthOfField"
+        },
+        "id": {
+          "default": "camera",
+          "title": "Id",
+          "type": "string"
+        },
+        "lens": {
+          "default": 50.0,
+          "exclusiveMinimum": 0,
+          "title": "Lens",
+          "type": "number"
+        },
+        "margin": {
+          "default": 1.15,
+          "exclusiveMinimum": 0,
+          "title": "Margin",
+          "type": "number"
+        },
+        "motion_blur": {
+          "default": false,
+          "title": "Motion Blur",
+          "type": "boolean"
+        },
+        "shutter": {
+          "default": 0.5,
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "title": "Shutter",
+          "type": "number"
+        }
+      },
+      "title": "Camera",
+      "type": "object"
+    },
+    "DepthOfField": {
+      "additionalProperties": false,
+      "description": "Real lenses focus at one distance and blur everything else.\n\nIts absence is a strong \"CG\" tell \u2014 a perfectly sharp image at every depth is something no\nphysical camera produces. Focus tracks an empty at the subject, so it stays locked while the\ncamera moves rather than needing to be keyframed.",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "f_stop": {
+          "default": 4.0,
+          "exclusiveMinimum": 0,
+          "title": "F Stop",
+          "type": "number"
+        },
+        "focus_offset": {
+          "default": 0.0,
+          "title": "Focus Offset",
+          "type": "number"
+        }
+      },
+      "title": "DepthOfField",
+      "type": "object"
+    },
+    "Environment": {
+      "additionalProperties": false,
+      "properties": {
+        "floor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Floor"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "volumetrics": {
+          "$ref": "#/$defs/Volumetrics"
+        }
+      },
+      "title": "Environment",
+      "type": "object"
+    },
+    "Floor": {
+      "additionalProperties": false,
+      "description": "A ground plane under the subject. Sits at the subject's lowest point, not at z=0.",
+      "properties": {
+        "bump": {
+          "default": 1.0,
+          "minimum": 0,
+          "title": "Bump",
+          "type": "number"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "material": {
+          "const": "stone",
+          "default": "stone",
+          "title": "Material",
+          "type": "string"
+        },
+        "offset": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Offset",
+          "type": "number"
+        },
+        "ripple_detail": {
+          "default": 6.0,
+          "minimum": 0,
+          "title": "Ripple Detail",
+          "type": "number"
+        },
+        "ripple_scale": {
+          "default": 28.0,
+          "exclusiveMinimum": 0,
+          "title": "Ripple Scale",
+          "type": "number"
+        },
+        "ripple_speed": {
+          "default": 6.0,
+          "minimum": 0,
+          "title": "Ripple Speed",
+          "type": "number"
+        },
+        "ripples": {
+          "default": 0.0,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Ripples",
+          "type": "number"
+        },
+        "scale": {
+          "default": 6.0,
+          "description": "Texture scale (tiles per unit).",
+          "exclusiveMinimum": 0,
+          "title": "Scale",
+          "type": "number"
+        },
+        "size": {
+          "default": 40.0,
+          "exclusiveMinimum": 0,
+          "title": "Size",
+          "type": "number"
+        },
+        "texture": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Texture"
+        },
+        "texture_resolution": {
+          "default": "2k",
+          "enum": [
+            "1k",
+            "2k",
+            "4k"
+          ],
+          "title": "Texture Resolution",
+          "type": "string"
+        },
+        "wet_flatten": {
+          "default": 0.25,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Wet Flatten",
+          "type": "number"
+        },
+        "wet_roughness": {
+          "default": 0.12,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Wet Roughness",
+          "type": "number"
+        },
+        "wetness": {
+          "default": 0.0,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Wetness",
+          "type": "number"
+        }
+      },
+      "title": "Floor",
+      "type": "object"
+    },
+    "Light": {
+      "additionalProperties": false,
+      "properties": {
+        "angle": {
+          "default": 0.526,
+          "exclusiveMinimum": 0,
+          "title": "Angle",
+          "type": "number"
+        },
+        "azimuth": {
+          "default": -35.0,
+          "title": "Azimuth",
+          "type": "number"
+        },
+        "color": {
+          "default": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Color",
+          "type": "array"
+        },
+        "distance": {
+          "default": 4.0,
+          "exclusiveMinimum": 0,
+          "title": "Distance",
+          "type": "number"
+        },
+        "elevation": {
+          "default": 35.0,
+          "title": "Elevation",
+          "type": "number"
+        },
+        "energy": {
+          "default": 200.0,
+          "minimum": 0,
+          "title": "Energy",
+          "type": "number"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "radius": {
+          "default": 0.1,
+          "minimum": 0,
+          "title": "Radius",
+          "type": "number"
+        },
+        "size": {
+          "default": 3.0,
+          "exclusiveMinimum": 0,
+          "title": "Size",
+          "type": "number"
+        },
+        "spot_blend": {
+          "default": 0.25,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Spot Blend",
+          "type": "number"
+        },
+        "spot_size": {
+          "default": 45.0,
+          "exclusiveMinimum": 0,
+          "maximum": 180.0,
+          "title": "Spot Size",
+          "type": "number"
+        },
+        "type": {
+          "default": "area",
+          "enum": [
+            "area",
+            "sun",
+            "spot"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "Light",
+      "type": "object"
+    },
+    "Outline": {
+      "additionalProperties": false,
+      "properties": {
+        "color": {
+          "default": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "maxItems": 4,
+          "minItems": 4,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Color",
+          "type": "array"
+        },
+        "creases": {
+          "default": false,
+          "title": "Creases",
+          "type": "boolean"
+        },
+        "mode": {
+          "default": "lineart",
+          "enum": [
+            "lineart",
+            "hull",
+            "offset",
+            "none"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "thickness": {
+          "default": 0.006,
+          "minimum": 0,
+          "title": "Thickness",
+          "type": "number"
+        }
+      },
+      "title": "Outline",
+      "type": "object"
+    },
+    "Post": {
+      "additionalProperties": false,
+      "description": "Compositing applied after the render.\n\nReal optics scatter light inside the lens around bright sources, so highlights bloom. That\nsoftening is a strong \"photographed\" cue.",
+      "properties": {
+        "bloom": {
+          "default": 0.0,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Bloom",
+          "type": "number"
+        },
+        "bloom_threshold": {
+          "default": 1.0,
+          "minimum": 0,
+          "title": "Bloom Threshold",
+          "type": "number"
+        }
+      },
+      "title": "Post",
+      "type": "object"
+    },
+    "Timeline": {
+      "additionalProperties": false,
+      "description": "The authoritative clock. Never derived from the animation (ARCHITECTURE \u00a73).",
+      "properties": {
+        "duration": {
+          "description": "Seconds. The scene is exactly this long.",
+          "exclusiveMinimum": 0,
+          "title": "Duration",
+          "type": "number"
+        },
+        "fps": {
+          "default": 30,
+          "exclusiveMinimum": 0,
+          "title": "Fps",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "duration"
+      ],
+      "title": "Timeline",
+      "type": "object"
+    },
+    "Track": {
+      "additionalProperties": false,
+      "description": "One library action, scheduled on the timeline.\n\nThe agent writes these. It picks `action` from a closed vocabulary and fills `params` against\nthat action's schema \u2014 it never expresses motion as raw keyframes.",
+      "properties": {
+        "action": {
+          "title": "Action",
+          "type": "string"
+        },
+        "duration": {
+          "exclusiveMinimum": 0,
+          "title": "Duration",
+          "type": "number"
+        },
+        "params": {
+          "additionalProperties": true,
+          "title": "Params",
+          "type": "object"
+        },
+        "start": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Start",
+          "type": "number"
+        },
+        "target": {
+          "title": "Target",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "target",
+        "duration"
+      ],
+      "title": "Track",
+      "type": "object"
+    },
+    "Volumetrics": {
+      "additionalProperties": false,
+      "description": "Scattering medium that makes light shafts visible.\n\nImplemented as a bounded volume box, not a world volume \u2014 a world volume renders black in\nEEVEE 5.2 (see `staging.add_atmosphere`). Off by default: it is a real render cost and only\nearns it when there is a strong directional light with geometry to cast shafts through.",
+      "properties": {
+        "anisotropy": {
+          "default": 0.4,
+          "maximum": 1,
+          "minimum": -1,
+          "title": "Anisotropy",
+          "type": "number"
+        },
+        "density": {
+          "default": 0.12,
+          "minimum": 0,
+          "title": "Density",
+          "type": "number"
+        },
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "samples": {
+          "default": 96,
+          "exclusiveMinimum": 0,
+          "title": "Samples",
+          "type": "integer"
+        },
+        "size": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Size"
+        }
+      },
+      "title": "Volumetrics",
+      "type": "object"
+    },
+    "World": {
+      "additionalProperties": false,
+      "properties": {
+        "color": {
+          "default": [
+            0.02,
+            0.02,
+            0.025,
+            1.0
+          ],
+          "maxItems": 4,
+          "minItems": 4,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Color",
+          "type": "array"
+        },
+        "hdri": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hdri"
+        },
+        "hdri_resolution": {
+          "default": "2k",
+          "enum": [
+            "1k",
+            "2k",
+            "4k"
+          ],
+          "title": "Hdri Resolution",
+          "type": "string"
+        },
+        "hdri_rotation": {
+          "default": 0.0,
+          "title": "Hdri Rotation",
+          "type": "number"
+        },
+        "hdri_strength": {
+          "default": 1.0,
+          "minimum": 0,
+          "title": "Hdri Strength",
+          "type": "number"
+        },
+        "hdri_visible": {
+          "default": false,
+          "title": "Hdri Visible",
+          "type": "boolean"
+        },
+        "strength": {
+          "default": 1.0,
+          "minimum": 0,
+          "title": "Strength",
+          "type": "number"
+        }
+      },
+      "title": "World",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A compiled animation. Authored by hand or by an agent; never contains bpy. Becomes the source of truth once a build succeeds \u2014 edits are patches, not regenerations.",
+  "properties": {
+    "assets": {
+      "items": {
+        "$ref": "#/$defs/Asset"
+      },
+      "title": "Assets",
+      "type": "array"
+    },
+    "camera": {
+      "$ref": "#/$defs/Camera"
+    },
+    "environment": {
+      "$ref": "#/$defs/Environment"
+    },
+    "lights": {
+      "items": {
+        "$ref": "#/$defs/Light"
+      },
+      "title": "Lights",
+      "type": "array"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "post": {
+      "$ref": "#/$defs/Post"
+    },
+    "timeline": {
+      "$ref": "#/$defs/Timeline"
+    },
+    "tracks": {
+      "items": {
+        "$ref": "#/$defs/Track"
+      },
+      "title": "Tracks",
+      "type": "array"
+    },
+    "version": {
+      "default": 1,
+      "title": "Version",
+      "type": "integer"
+    },
+    "world": {
+      "$ref": "#/$defs/World"
+    }
+  },
+  "required": [
+    "name",
+    "timeline",
+    "assets"
+  ],
+  "title": "blended Scene IR",
+  "type": "object"
+}

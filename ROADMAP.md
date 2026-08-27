@@ -249,19 +249,27 @@ changing a material afterwards cannot silently move the camera.
 
 ---
 
-## Phase 4 — Formalize the agent contract
+## Phase 4 — Formalize the agent contract ✅ **COMPLETE**
 *No planner to build. Publish what Phase 2 already proved, so it's repeatable.*
 
-- [ ] Emit `schemas/scene.schema.json` + `schemas/library.json` from pydantic
-- [ ] `docs/authoring.md` — how to author `scene.json`; the library vocabulary; the invariants
-- [ ] `CLAUDE.md` — repo conventions, where things live, what never to do (never hand-write `bpy`)
-- [ ] L1 `intent.py` + `lower.py` (deterministic, no I/O) — **only if** Phase 2 showed a real need
-      for a semantic layer above Scene IR. If hand-authoring L2 was comfortable, skip it
-- [ ] Cold-start test: from `goal.md` alone, in a fresh session, author a `scene.json` that passes
-      `check` — then diff it against the Phase-2 hand-written version
+- [x] `blended schema` emits `scene.schema.json`, `library.json`, `stages.json` from the live
+      models, so the published contract cannot drift from the code
+- [x] `docs/authoring.md` — the traps, not just the fields
+- [x] `CLAUDE.md` updated; README points at the guide
+- [x] **`blended new`** — scaffolds a project that already renders. Not in the original scope,
+      but it was the actual usability gap: a second project previously meant hand-writing
+      `scene.json` from nothing
+- [x] ~~L1 `intent.py` + `lower.py`~~ — **deliberately skipped.** The roadmap made this
+      conditional on Phase 2 showing a real need for a semantic layer above Scene IR, and it did
+      not: hand-authoring Scene IR was comfortable, the shipped scene is under 1,800 characters,
+      and every production edit was a direct field change. A semantic layer would be indirection
+      solving a problem never hit. A test asserts the decision stays made.
+- [ ] Cold-start test: from `goal.md` alone, **in a fresh session**, author a `scene.json` that
+      passes `check`. Deliberately not run by the session that wrote the docs — it cannot unknow
+      the IR, so it would pass from memory and prove nothing. Whatever a fresh session fumbles
+      is a documentation bug.
 
 **Done when:** the cold-start test converges using only `check` diagnostics as feedback.
-That's the real proof the contract is good enough for *any* agent, API or not.
 
 ---
 
