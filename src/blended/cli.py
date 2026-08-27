@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 import click
@@ -423,6 +424,50 @@ def new_cmd(name: str, asset: Path, into: Path, duration: float, fps: int,
     click.echo(f"  blended stage assets {scene_file}      # is the model right?")
     click.echo(f"  blended approve assets {scene_file}")
     click.echo(f"  blended stage blocking {scene_file}    # does the motion work?")
+
+
+@main.command("watch")
+@click.argument("scene_file", type=click.Path(exists=True, path_type=Path))
+@click.option("--stage", type=click.Choice(list(_STAGE_ORDER)), default=None,
+              help="Publish this stage's view (with its suppressions) instead of the raw scene.")
+@click.option("--interval", type=float, default=0.5, show_default=True)
+@click.option("--once", is_flag=True, help="Publish once and exit.")
+def watch_cmd(scene_file: Path, stage: str | None, interval: float, once: bool) -> None:
+    """Publish a resolved scene for the Blender add-on, and republish on every change.
+
+    Pair with the add-on in `addon/blended_live.py`: point it at the `.resolved.json` this
+    writes, and the viewport rebuilds as you edit — no render, no reopening the file.
+    """
+    from blended.live import publish, resolved_path, watch
+
+    def report(result, error):
+        stamp = time.strftime("%H:%M:%S")
+        if error is not None:
+            click.echo(f"  {stamp} {click.style('✗', fg='red')} {error}")
+        elif result.ok:
+            click.echo(f"  {stamp} {_ok()} republished {result.scene_name}")
+        else:
+            click.echo(f"  {stamp} {click.style('!', fg='yellow')} "
+                       f"invalid: {'; '.join(result.errors)[:90]}")
+
+    try:
+        first = publish(scene_file, stage=stage)
+    except BlendedError as exc:
+        _fail(exc)
+        return
+
+    click.echo(f"{_ok()} {first.path}")
+    click.echo(f"\nIn Blender: press N ▸ blended tab ▸ set Resolved scene to")
+    click.echo(f"  {first.path}")
+    if once:
+        return
+
+    click.echo(f"\nWatching {scene_file} (ctrl-c to stop)")
+    report(first, None)
+    try:
+        watch(scene_file, stage=stage, interval=interval, on_publish=report)
+    except KeyboardInterrupt:
+        click.echo("\nstopped")
 
 
 @main.command("schema")
