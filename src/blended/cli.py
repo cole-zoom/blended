@@ -308,6 +308,59 @@ def render(scene_file: Path, quality: str, out: Path | None, stills: bool, engin
         click.echo(f"  {name:6} {path}{_size(Path(path))}")
 
 
+def _print_probe_report(report, probe_ms) -> None:
+    """Tier-2 results. Facts first, then anything that failed."""
+    took = f" ({probe_ms:.0f}ms)" if probe_ms else ""
+    click.echo(f"\n  {click.style('probes', bold=True)}{took}")
+    for line in _probe_summary(report.raw):
+        click.echo(f"    {line}")
+    for diag in report.diagnostics:
+        colour = "red" if diag.severity == "error" else "yellow"
+        mark = "✗" if diag.severity == "error" else "!"
+        click.echo(f"    {click.style(mark, fg=colour)} "
+                   f"{click.style(diag.code, bold=True)}: {diag.message}")
+        if diag.hint:
+            click.echo(f"        {diag.hint}")
+    if report.ok and not report.diagnostics:
+        click.echo(f"    {_ok()} all checks passed")
+
+
+def _probe_summary(raw: dict) -> list[str]:
+    """One line per probe: the numbers worth seeing even when nothing is wrong."""
+    lines = []
+    if g := raw.get("geometry"):
+        if "error" not in g:
+            lines.append(f"geometry   {len(g.get('objects', {}))} part(s), "
+                         f"{g.get('total_holes', 0)} holes, "
+                         f"manifold={g.get('manifold')}")
+    if f := raw.get("framing"):
+        if "error" not in f:
+            lines.append(f"framing    coverage {f['min_coverage']:.1%}–{f['max_coverage']:.1%}, "
+                         f"in-frame={f['always_in_frame']}")
+    if m := raw.get("motion"):
+        if "error" not in m:
+            lines.append(f"motion     sweep {m['azimuth_sweep']:.0f}°, "
+                         f"distance {m['distance_min']:.2f}→{m['distance_max']:.2f}, "
+                         f"height {m['height_start']:.2f}→{m['height_end']:.2f}")
+    if lt := raw.get("light"):
+        for name, entry in (lt.get("lights") or {}).items():
+            lines.append(f"light      {name}: {entry['energy_start']:.0f}→"
+                         f"{entry['energy_max']:.0f}W peak@f{entry['peak_frame']}, "
+                         f"aim={entry.get('aim_alignment', 'n/a')}")
+    if mat := raw.get("materials"):
+        if "error" not in mat:
+            found = sum(1 for i in mat.get("images", {}).values() if i.get("exists"))
+            lines.append(f"materials  {found}/{len(mat.get('images', {}))} textures resolved")
+    return lines
+
+
+def _write_probe_report(report, out_dir: Path, scene_name: str, stage_name: str) -> Path:
+    path = Path(out_dir) / f"{scene_name}_{stage_name}_probes.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(report.as_dict(), indent=2, default=str))
+    return path
+
+
 def _print_diagnostics(report) -> None:
     for diag in report.diagnostics:
         colour = "red" if diag.severity == "error" else "yellow"
@@ -380,11 +433,84 @@ def stage_cmd(stage_name: str, scene_file: Path, out: Path | None, force: bool,
         _fail(exc)
         return
 
+    probe_report = None
+    if raw := result.stats.get("probes"):
+        from blended.verify.probes import evaluate
+
+        probe_report = evaluate(raw, stage=stage.name, ir=ir)
+        _print_probe_report(probe_report, result.stats.get("probe_ms"))
+        _write_probe_report(probe_report, out_dir, scene.name, stage.name)
+
     click.echo(f"\n{_ok()} {stage.name} rendered in "
                f"{result.stats.get('render_ms', 0) / 1000:.1f}s")
     for name, path in result.artifacts.items():
         click.echo(f"  {name:6} {path}{_size(Path(path))}")
     click.echo(f"\nReview it, then: blended approve {stage.name} {scene_file}")
+
+
+@main.command("contact-sheet")
+@click.argument("pattern")
+@click.option("--out", type=click.Path(path_type=Path), default=None,
+              help="Output PNG. Defaults to <pattern-dir>/contact_sheet.png")
+@click.option("--columns", type=int, default=4, show_default=True)
+@click.option("--max-frames", type=int, default=16, show_default=True)
+def contact_sheet_cmd(pattern: str, out: Path | None, columns: int, max_frames: int) -> None:
+    """Tile rendered frames into one image for review.
+
+    Takes a glob, e.g. 'renders/scene_blocking_*.png'. Frames are sampled evenly across the
+    shot, so the sheet represents the whole thing rather than its first two seconds.
+    """
+    target = out or (Path(pattern).parent / "contact_sheet.png")
+    job = {
+        "scene": {"kind": "contact_sheet", "pattern": str(pattern),
+                  "output": str(Path(target).resolve()),
+                  "columns": columns, "max_frames": max_frames},
+        "render": {"output": ""},
+    }
+    try:
+        result = run_job(job)
+    except BlendedError as exc:
+        _fail(exc)
+        return
+
+    stats = result.stats
+    if error := stats.get("error"):
+        click.echo(f"{click.style('✗', fg='red')} {error}", err=True)
+        sys.exit(1)
+    click.echo(f"{_ok()} {stats['tiles']} frames in a {stats['grid'][0]}x{stats['grid'][1]} "
+               f"grid -> {stats['output']}{_size(Path(stats['output']))}")
+
+
+@main.command("flicker")
+@click.argument("pattern")
+@click.option("--limit", type=int, default=24, show_default=True,
+              help="Frames to sample across the sequence.")
+def flicker_cmd(pattern: str, limit: int) -> None:
+    """Measure temporal flicker in a rendered frame sequence.
+
+    Uses the second temporal difference, so smooth camera motion cancels and only non-smooth
+    change — popping highlights, shimmer — is reported. A plain frame-to-frame difference
+    cannot tell the two apart.
+    """
+    job = {
+        "scene": {"kind": "flicker", "pattern": str(pattern), "limit": limit},
+        "render": {"output": ""},
+    }
+    try:
+        result = run_job(job)
+    except BlendedError as exc:
+        _fail(exc)
+        return
+
+    stats = result.stats
+    if error := stats.get("error"):
+        click.echo(f"{click.style('✗', fg='red')} {error}", err=True)
+        sys.exit(1)
+    click.echo(f"{_ok()} {stats['frames']} frames sampled")
+    click.echo(f"  mean     {stats['mean'] * 1000:.3f}e-3")
+    click.echo(f"  p99.9    {stats['p99_9']:.4f}   (the number that matters — "
+               "flicker lives in few, bright pixels)")
+    click.echo(f"  worst    {stats['worst_p99_9']:.4f}")
 
 
 @main.command("approve")

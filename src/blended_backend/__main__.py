@@ -50,6 +50,14 @@ def run(job, job_id):
     render_cfg = job.get("render") or {}
     render_mod.apply_settings(scene, render_cfg)
 
+    # Tier 2 runs here on purpose: after the scene exists, before a single pixel is paid for.
+    if probe_names := job.get("probes"):
+        from blended_backend import probes as probe_mod
+
+        t_probe = time.perf_counter()
+        stats["probes"] = probe_mod.run(scene, probe_names, job.get("scene", {}).get("ir"))
+        stats["probe_ms"] = round((time.perf_counter() - t_probe) * 1000, 1)
+
     # Save the .blend BEFORE rendering: if the render fails, you still get an inspectable file,
     # which is usually exactly what you need to see why.
     if blend_out := job.get("blend_out"):
@@ -57,19 +65,46 @@ def run(job, job_id):
 
     if render_cfg.get("output"):
         t1 = time.perf_counter()
-        output = render_mod.render_animation(scene, render_cfg)
-        stats["render_ms"] = round((time.perf_counter() - t1) * 1000, 1)
-        key = "video" if render_cfg.get("media", "video") == "video" else "stills"
-        artifacts[key] = output
+        media = render_cfg.get("media", "video")
+        if media == "sequence":
+            # Resumable: completed frames stay on disk, so an interruption costs only the
+            # frame in flight rather than the whole run.
+            from blended_backend import sequence
 
-    stats["frames"] = scene.frame_end - scene.frame_start + 1
-    stats["engine"] = scene.render.engine
+            stats["sequence"] = sequence.render_sequence(
+                scene, render_cfg, resume=render_cfg.get("resume", True)
+            )
+            artifacts["frames"] = stats["sequence"]["frames_path"]
+            if encode_to := render_cfg.get("encode_to"):
+                stats["encode"] = sequence.encode(
+                    render_cfg["output"], encode_to, fps=scene.render.fps
+                )
+                if "output" in stats["encode"]:
+                    artifacts["video"] = stats["encode"]["output"]
+        else:
+            output = render_mod.render_animation(scene, render_cfg)
+            artifacts["video" if media == "video" else "stills"] = output
+        stats["render_ms"] = round((time.perf_counter() - t1) * 1000, 1)
+
+    # Generic render facts only *fill gaps*. Assigning them outright silently clobbers whatever
+    # the build or an analysis already reported under the same name — a contact sheet of 12
+    # tiles announced itself as 60 because "frames" here overwrote its own count, and the same
+    # bug then reappeared in the flicker report. Anything the job actually computed outranks a
+    # description of the render that produced it.
+    generic = {
+        "frames": scene.frame_end - scene.frame_start + 1,
+        "engine": scene.render.engine,
+        "resolution": [scene.render.resolution_x, scene.render.resolution_y],
+        "fps": scene.render.fps,
+    }
     if scene.render.engine == "CYCLES":
-        stats["cycles_device"] = scene.cycles.device
-        stats["cycles_backend"] = render_cfg.get("_cycles_device")
-        stats["cycles_samples"] = scene.cycles.samples
-    stats["resolution"] = [scene.render.resolution_x, scene.render.resolution_y]
-    stats["fps"] = scene.render.fps
+        generic.update({
+            "cycles_device": scene.cycles.device,
+            "cycles_backend": render_cfg.get("_cycles_device"),
+            "cycles_samples": scene.cycles.samples,
+        })
+    for key, value in generic.items():
+        stats.setdefault(key, value)
     return artifacts, stats
 
 

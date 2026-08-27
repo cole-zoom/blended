@@ -90,6 +90,11 @@ def apply_settings(scene, cfg):
         render.engine = engine
 
     width, height = cfg.get("resolution", [960, 540])
+    if cfg.get("media") in ("video", "sequence"):
+        # H.264 requires even dimensions. Blender only complains at encode time, which for a
+        # frame sequence means after every frame has already been paid for — so round here,
+        # where it costs at most one pixel and nothing else.
+        width, height = int(width) // 2 * 2, int(height) // 2 * 2
     render.resolution_x = int(width)
     render.resolution_y = int(height)
     render.resolution_percentage = int(cfg.get("resolution_percentage", 100))

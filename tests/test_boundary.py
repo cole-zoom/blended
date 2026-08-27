@@ -18,7 +18,10 @@ BACKEND = SRC / "blended_backend"
 
 #: Modules the backend is allowed to import. Blender's Python is a stock CPython, so its stdlib
 #: is available; `bpy` and friends come from Blender itself.
-BLENDER_PROVIDED = {"bpy", "mathutils", "bmesh", "gpu", "aud", "bl_math", "addon_utils", "bpy_extras"}
+#: numpy ships inside Blender's Python (2.3.4 on 5.2), so the backend may use it even though
+#: the host venv does not provide it.
+BLENDER_PROVIDED = {"bpy", "mathutils", "bmesh", "gpu", "aud", "bl_math", "addon_utils",
+                    "bpy_extras", "numpy"}
 
 
 def _third_party_names() -> set[str]:
@@ -82,3 +85,19 @@ def test_result_schema_versions_match() -> None:
     assert schema_version(host) == schema_version(guest), (
         "blended.engine.result and blended_backend.result have drifted."
     )
+
+
+def test_generic_render_stats_do_not_clobber_build_stats() -> None:
+    """Regression: analysis jobs report their own counts under shared key names.
+
+    A contact sheet of 12 tiles announced itself as 60 because the generic render stats
+    assigned `frames` *after* build stats were merged. Twice — the same bug reappeared in the
+    flicker report. The fix is that generic facts only fill gaps, so this asserts the shape of
+    that fix rather than its symptom.
+    """
+    source = (SRC / "blended_backend" / "__main__.py").read_text()
+    assert "stats.setdefault(key, value)" in source, (
+        "generic render stats must fill gaps, not overwrite what the job computed"
+    )
+    tail = source[source.index("generic = {"):]
+    assert 'stats["frames"] =' not in tail, "generic stats must not assign directly"
