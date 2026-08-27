@@ -145,6 +145,40 @@ kernels, then caches them. I have measured 150s/frame this way and been wrong by
 
 ---
 
+## Live reload — skip the render entirely
+
+Most iteration does not need a render at all. Every stage already saves a `.blend` you can open
+and scrub, and the add-on goes further: it rebuilds the scene **in your open viewport** when the
+source changes.
+
+```bash
+blended watch projects/myproject/scene.json      # republishes on every save
+```
+
+Then in Blender: **Edit ▸ Preferences ▸ Add-ons ▸ Install…**, choose `addon/blended_live.py`,
+enable it, press **N** in the viewport and open the **blended** tab. Point *Resolved scene* at the
+`.resolved.json` the watcher printed, and press *Start watching*.
+
+Now editing `scene.json` updates the viewport in about **40 ms**. Your view angle, selection and
+timeline position all stay put — the add-on clears the built objects rather than reloading the
+file.
+
+Watch a specific stage to see what that stage sees:
+
+```bash
+blended watch scene.json --stage blocking        # clay, no floor, no environment
+```
+
+Why it works: `blended_backend` may import only stdlib and `bpy`, so the same code that builds a
+scene during a background render builds it inside the GUI — no subprocess, no second
+implementation. The host still resolves textures and validates, because the add-on has neither
+network nor pydantic; that is what the `.resolved.json` carries.
+
+A scene that fails Tier 1 is still published, with its errors. The panel shows them rather than
+leaving you looking at a stale scene and wondering why nothing changed.
+
+---
+
 ## Iterating
 
 Edit the field, re-run the stage. Stages downstream of an approved change are blocked until you

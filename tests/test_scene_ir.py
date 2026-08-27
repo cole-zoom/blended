@@ -15,7 +15,7 @@ from blended.library import registry
 from blended.project import load
 from blended.verify.static import check
 
-PROJECT = Path(__file__).resolve().parent.parent / "projects" / "lancedb_logo"
+PROJECT = Path(__file__).resolve().parent.parent / "projects" / "lancedb"
 
 # `projects/` is gitignored — scenes and renders are per-machine work product, not source.
 requires_project = pytest.mark.skipif(
@@ -141,9 +141,8 @@ def test_action_rejects_wrong_target_kind() -> None:
 
 
 @requires_project
-@pytest.mark.parametrize("filename", ["scene.json", "scene_plain.json"])
-def test_shipped_scenes_are_valid(filename: str) -> None:
-    scene = load(PROJECT / filename)
+def test_shipped_scene_is_valid() -> None:
+    scene = load(PROJECT / "scene.json")
     report = check(scene)
     assert report.ok, [d.message for d in report.errors]
     assert scene.timeline.frames == 480
@@ -152,35 +151,33 @@ def test_shipped_scenes_are_valid(filename: str) -> None:
 
 @requires_project
 def test_shipped_scene_matches_the_goal() -> None:
-    """goal.md, checked against the IR rather than against a render."""
+    """The brief, checked against the IR rather than against a render."""
     scene = load(PROJECT / "scene.json")
 
     orbit = next(t for t in scene.tracks if t.action == "camera.orbit")
     sweep = abs(orbit.params["end_azimuth"] - orbit.params["start_azimuth"])
     assert sweep >= 60, "camera must pan around the logo"
-    # "start near the floor, orbit up and away"
+    # "start at floor level, orbit up and away, decelerating"
+    assert orbit.params["start_elevation"] < 0, "starts below the logo's centre"
     assert orbit.params["end_elevation"] > orbit.params["start_elevation"]
     assert orbit.params["end_distance_scale"] > orbit.params["start_distance_scale"]
-    assert orbit.params["easing"] == "ease_out", "decelerating orbit"
+    assert orbit.params["easing"] == "ease_out"
 
     ramp = next(t for t in scene.tracks if t.action == "light.ramp")
     assert ramp.params["start_energy"] > 0, "dim, not off"
     assert ramp.params["end_energy"] / ramp.params["start_energy"] >= 5.0
-    assert ramp.end == pytest.approx(10.0), "brightest at 10s"
+    assert ramp.end == pytest.approx(10.0), "brightest at 10s, then held"
+    assert any(t.action == "object.hold" and t.start == 10.0 for t in scene.tracks)
 
-    sun = next(lt for lt in scene.lights if lt.type == "sun")
-    assert sun.angle == pytest.approx(0.526, abs=0.01), "real sun angular diameter"
+    # One lamp from the corner, not a sun.
+    assert [lt.type for lt in scene.lights] == ["spot"]
 
     assert scene.world.color[:3] == (0.0, 0.0, 0.0), "black background"
-    assert scene.environment.floor is not None and scene.environment.floor.enabled
-    assert scene.environment.floor.material == "stone"
+    assert scene.world.hdri, "wet surfaces need an environment to reflect"
 
-
-@requires_project
-def test_the_two_shipped_scenes_differ_only_in_outline() -> None:
-    """The comparison is only meaningful if nothing else changed between them."""
-    a = json.loads((PROJECT / "scene.json").read_text())
-    b = json.loads((PROJECT / "scene_plain.json").read_text())
-    a.pop("name"), b.pop("name")
-    a["assets"][0].pop("outline"), b["assets"][0].pop("outline")
-    assert a == b
+    floor = scene.environment.floor
+    assert floor is not None and floor.enabled and floor.texture
+    assert floor.wetness > 0
+    # Settled after measuring flicker: ripples off, relief damped where wet.
+    assert floor.ripples == 0.0
+    assert floor.wet_flatten < 0.5

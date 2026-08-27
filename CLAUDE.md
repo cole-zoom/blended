@@ -99,6 +99,17 @@ uv run blended stage final    scene.json   # Cycles, resumable
 uv run blended status         scene.json
 ```
 
+Live reload — rebuild in an open Blender viewport, ~40ms, no render:
+
+```bash
+uv run blended watch scene.json    # then install addon/blended_live.py in Blender
+```
+
+The add-on imports `blended_backend` directly. That only works because the backend is
+constrained to stdlib + `bpy`, which makes it as valid inside the GUI as in a background render.
+It calls `scene.clear()`, **never** `reset()` — the latter calls `read_factory_settings` and
+would throw away the open file.
+
 ## Where things are documented
 
 | For | Read |

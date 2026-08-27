@@ -273,6 +273,29 @@ changing a material afterwards cannot silently move the camera.
 
 ---
 
+## Live reload ✅ **COMPLETE** *(unplanned; slotted before Phase 5)*
+*Rebuild in an open Blender viewport instead of rendering to look at something.*
+
+- [x] `blended watch` — resolves textures, validates, publishes `*.resolved.json`, republishes
+      on change
+- [x] `addon/blended_live.py` — Blender add-on: reload button, auto-watch modal timer,
+      stage status, frame-subject
+- [x] `scene.clear()` — empties built content **without** `read_factory_settings`, so the open
+      file, viewport angle and selection all survive
+- [x] 14 tests
+
+**Done:** editing `scene.json` updates the viewport in **~36ms**. Measured across repeated
+rebuilds with no duplicate objects and no orphaned meshes.
+
+The architectural payoff was unplanned: `blended_backend` has been restricted to stdlib + `bpy`
+since Phase 0 purely to keep the host/guest boundary honest. That restriction is exactly what
+lets the *same* build code run inside the GUI — no subprocess, no second implementation.
+
+A modal timer rather than a thread, because `bpy` is not thread-safe and touching scene data off
+the main thread crashes Blender rather than merely misbehaving.
+
+---
+
 ## Phase 5 — Iteration loop
 *The thing that makes it usable.*
 

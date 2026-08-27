@@ -24,6 +24,35 @@ def reset():
         bpy.ops.outliner.orphans_purge(do_recursive=True)
 
 
+#: Datablock collections a build creates. Images are deliberately absent — keeping them cached
+#: makes a live reload fast, and a texture that has not changed does not need re-reading.
+_REBUILT_COLLECTIONS = ("meshes", "curves", "materials", "lights", "cameras",
+                        "grease_pencils", "node_groups", "worlds", "actions")
+
+
+def clear():
+    """Remove built content *without* resetting the file.
+
+    `reset()` calls `read_factory_settings`, which is correct for a background render and
+    destructive in the GUI — it would throw away the open file and the viewport you have
+    carefully positioned. Live reload needs the scene emptied while everything around it stays
+    put, so this removes objects and their orphaned data and nothing else.
+    """
+    scene = bpy.context.scene
+    for obj in list(scene.collection.all_objects):
+        bpy.data.objects.remove(obj, do_unlink=True)
+
+    # Several passes: removing a mesh can orphan a material, which can orphan a node group.
+    for _ in range(3):
+        for name in _REBUILT_COLLECTIONS:
+            collection = getattr(bpy.data, name, None)
+            if collection is None:
+                continue
+            for item in list(collection):
+                if item.users == 0:
+                    collection.remove(item)
+
+
 def build(spec):
     """Dispatch on scene kind. Returns a dict of stats about what was built."""
     kind = spec.get("kind", "demo_cube")
