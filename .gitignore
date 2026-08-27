@@ -1,0 +1,28 @@
+# Blender source clone — API oracle only, never vendored (345MB)
+blender/
+
+# Machine-local work product, not source. Scenes, renders and source art are per-machine and
+# not meant to be cloned — the tests that use them skip when absent.
+projects/
+goal/
+
+# Build output
+out/
+.cache/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Env
+.env
+.env.local
+
+# macOS
+.DS_Store
