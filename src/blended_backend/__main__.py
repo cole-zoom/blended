@@ -50,6 +50,14 @@ def run(job, job_id):
     render_cfg = job.get("render") or {}
     render_mod.apply_settings(scene, render_cfg)
 
+    # Tier 2 runs here on purpose: after the scene exists, before a single pixel is paid for.
+    if probe_names := job.get("probes"):
+        from blended_backend import probes as probe_mod
+
+        t_probe = time.perf_counter()
+        stats["probes"] = probe_mod.run(scene, probe_names, job.get("scene", {}).get("ir"))
+        stats["probe_ms"] = round((time.perf_counter() - t_probe) * 1000, 1)
+
     # Save the .blend BEFORE rendering: if the render fails, you still get an inspectable file,
     # which is usually exactly what you need to see why.
     if blend_out := job.get("blend_out"):

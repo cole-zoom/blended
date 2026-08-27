@@ -31,6 +31,15 @@ def build(spec):
         return _build_demo_cube(spec)
     if kind == "logo_still":
         return _build_logo_still(spec)
+    if kind == "contact_sheet":
+        from blended_backend import contact_sheet
+
+        return contact_sheet.build(
+            spec["pattern"], spec["output"],
+            columns=spec.get("columns", 4),
+            max_frames=spec.get("max_frames", 16),
+            cell_width=spec.get("cell_width", 320),
+        )
     if kind == "scene_ir":
         from blended_backend import build as build_mod
 

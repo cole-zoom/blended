@@ -18,7 +18,10 @@ BACKEND = SRC / "blended_backend"
 
 #: Modules the backend is allowed to import. Blender's Python is a stock CPython, so its stdlib
 #: is available; `bpy` and friends come from Blender itself.
-BLENDER_PROVIDED = {"bpy", "mathutils", "bmesh", "gpu", "aud", "bl_math", "addon_utils", "bpy_extras"}
+#: numpy ships inside Blender's Python (2.3.4 on 5.2), so the backend may use it even though
+#: the host venv does not provide it.
+BLENDER_PROVIDED = {"bpy", "mathutils", "bmesh", "gpu", "aud", "bl_math", "addon_utils",
+                    "bpy_extras", "numpy"}
 
 
 def _third_party_names() -> set[str]:
