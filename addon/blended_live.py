@@ -194,19 +194,52 @@ class BLENDED_OT_watch(Operator):
         return {"CANCELLED"}
 
 
+#: Staging geometry, excluded when framing. A floor can be 220 units across against a subject
+#: of 1 — framing everything zooms out until the subject is a speck, which is the opposite of
+#: what the button is for.
+STAGING_NAMES = {"floor", "atmosphere"}
+STAGING_SUFFIXES = ("_outline", "_lineart")
+
+
+def _is_subject(obj):
+    return (
+        obj.type == "MESH"
+        and obj.name not in STAGING_NAMES
+        and not obj.name.endswith(STAGING_SUFFIXES)
+    )
+
+
 class BLENDED_OT_frame_subject(Operator):
-    """Point the viewport at whatever was just built."""
+    """Zoom the viewport to the subject, ignoring floor and atmosphere."""
 
     bl_idname = "blended.frame_subject"
     bl_label = "Frame subject"
 
     def execute(self, context):
         for obj in context.scene.collection.all_objects:
-            obj.select_set(obj.type == "MESH")
-        with context.temp_override(area=next(
-            (a for a in context.screen.areas if a.type == "VIEW_3D"), None
-        )):
+            obj.select_set(_is_subject(obj))
+        area = next((a for a in context.screen.areas if a.type == "VIEW_3D"), None)
+        if area is None:
+            self.report({"ERROR"}, "No 3D viewport to frame")
+            return {"CANCELLED"}
+        with context.temp_override(area=area):
             bpy.ops.view3d.view_selected()
+        return {"FINISHED"}
+
+
+class BLENDED_OT_look_through_camera(Operator):
+    """Look through the scene camera — the framing the animation is actually composed for."""
+
+    bl_idname = "blended.look_through_camera"
+    bl_label = "Look through camera"
+
+    def execute(self, context):
+        area = next((a for a in context.screen.areas if a.type == "VIEW_3D"), None)
+        if area is None or context.scene.camera is None:
+            self.report({"ERROR"}, "No camera in the scene")
+            return {"CANCELLED"}
+        with context.temp_override(area=area):
+            bpy.ops.view3d.view_camera()
         return {"FINISHED"}
 
 
@@ -241,7 +274,9 @@ class BLENDED_PT_panel(Panel):
         elif BLENDED_OT_watch.is_running():
             layout.operator("blended.watch", text="Stop watching", icon="SNAP_FACE")
 
-        layout.operator("blended.frame_subject", icon="ZOOM_SELECTED")
+        row = layout.row(align=True)
+        row.operator("blended.frame_subject", text="Frame", icon="ZOOM_SELECTED")
+        row.operator("blended.look_through_camera", text="Camera", icon="CAMERA_DATA")
 
         box = layout.box()
         icon = {"ok": "CHECKMARK", "watching": "TIME", "idle": "DOT",
@@ -270,7 +305,7 @@ def _wrap(text, width):
 # ------------------------------------------------------------------------------- registration
 
 CLASSES = (BlendedState, BLENDED_OT_reload, BLENDED_OT_watch,
-           BLENDED_OT_frame_subject, BLENDED_PT_panel)
+           BLENDED_OT_frame_subject, BLENDED_OT_look_through_camera, BLENDED_PT_panel)
 
 
 def register():
