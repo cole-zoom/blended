@@ -78,6 +78,42 @@ def resolve_textures(ir: dict, cache_root: Path) -> dict:
     return ir
 
 
+def make_stage_job(scene: SceneIR, stage, *, out_dir: Path,
+                   cache_root: Path | None = None) -> dict:
+    """Build an engine job for one pipeline stage.
+
+    The stage's suppressions are applied to a *copy* of the IR, so what gets rendered is a view
+    of the scene rather than a mutation of it. The scene file is never rewritten to render a
+    stage — a blocking pass must not be able to clay your materials permanently.
+    """
+    out_dir = Path(out_dir).resolve()
+    ir = stage.apply(scene.model_dump(mode="json"))
+    ir = resolve_textures(ir, Path(cache_root or ".cache"))
+
+    width, height = stage.resolution
+    suffix = "mp4" if stage.media == "video" else ""
+    stem = f"{scene.name}_{stage.name}"
+    output = out_dir / (f"{stem}.{suffix}" if suffix else f"{stem}_")
+
+    return {
+        "blend_out": str(out_dir / f"{stem}.blend"),
+        "scene": {"kind": "scene_ir", "ir": ir},
+        "render": {
+            "engine": "CYCLES" if stage.engine == "cycles" else "BLENDER_EEVEE",
+            "device": "GPU",
+            "resolution": [width, height],
+            "fps": scene.timeline.fps,
+            "frame_start": 1,
+            "frame_end": scene.timeline.frames,
+            "frame_step": stage.frame_step,
+            "samples": stage.samples,
+            "media": stage.media,
+            "output": str(output),
+        },
+        "probes": list(stage.probes),
+    }
+
+
 def make_job(scene: SceneIR, *, quality: str, out_dir: Path, media: str = "video",
              cache_root: Path | None = None, engine: str = "eevee") -> dict:
     """Build an engine job from a validated scene."""

@@ -11,6 +11,7 @@ import click
 from blended.config import ENV_VAR, find_blender
 from blended.engine.runner import RunOptions, run_job
 from blended.errors import BlendedError
+from blended.stages import STAGE_ORDER as _STAGE_ORDER
 
 
 @click.group()
@@ -317,6 +318,130 @@ def _print_diagnostics(report) -> None:
             click.echo(f"    {diag.hint}")
         if diag.suggested_fix:
             click.echo(f"    fix: {json.dumps(diag.suggested_fix)}")
+
+
+@main.command("stage")
+@click.argument("stage_name", type=click.Choice(list(_STAGE_ORDER)))
+@click.argument("scene_file", type=click.Path(exists=True, path_type=Path))
+@click.option("--out", type=click.Path(path_type=Path), default=None)
+@click.option("--force", is_flag=True, help="Proceed despite upstream drift.")
+@click.option("--build-only", is_flag=True, help="Build the .blend, skip rendering.")
+@click.option("--verbose", is_flag=True)
+def stage_cmd(stage_name: str, scene_file: Path, out: Path | None, force: bool,
+              build_only: bool, verbose: bool) -> None:
+    """Run one pipeline stage: build, render at its fidelity, and stop for review."""
+    from blended.approval import Ledger, blocking_drift
+    from blended.project import load, make_stage_job
+    from blended.stages import get as get_stage
+    from blended.verify.static import check as run_check
+
+    try:
+        scene = load(scene_file)
+    except BlendedError as exc:
+        _fail(exc)
+        return
+
+    report = run_check(scene)
+    _print_diagnostics(report)
+    if not report.ok:
+        click.echo("\nTier 1 failed — not building.", err=True)
+        sys.exit(1)
+
+    stage = get_stage(stage_name)
+    ir = scene.model_dump(mode="json")
+    ledger = Ledger.for_scene(scene_file)
+    states = ledger.states(scene.name, ir, [get_stage(n) for n in _STAGE_ORDER])
+
+    drifted = blocking_drift(states, stage_name)
+    if drifted:
+        click.echo(f"\n{click.style('!', fg='yellow')} "
+                   f"{click.style('UPSTREAM_DRIFT', bold=True)}: approved stage(s) changed "
+                   f"since sign-off", err=True)
+        for state in drifted:
+            click.echo(f"    {state.stage}: {', '.join(state.changed) or 'unknown'}", err=True)
+        if not force:
+            click.echo("\n  Re-approve them, or pass --force to proceed anyway.", err=True)
+            sys.exit(1)
+        click.echo("  proceeding anyway (--force)", err=True)
+
+    out_dir = (out or scene_file.parent / "renders").resolve()
+    job = make_stage_job(scene, stage, out_dir=out_dir)
+    if build_only:
+        job["render"]["output"] = ""
+
+    frames = scene.timeline.frames // max(1, stage.frame_step)
+    click.echo(f"\n{click.style(stage.name, bold=True)} — {stage.question}")
+    click.echo(f"  {stage.resolution[0]}x{stage.resolution[1]} {stage.engine}, "
+               f"{frames} frame(s), suppressing: {', '.join(stage.suppress) or 'nothing'}")
+
+    try:
+        result = run_job(job, RunOptions(timeout_s=max(1800.0, frames * 60.0), verbose=verbose))
+    except BlendedError as exc:
+        _fail(exc)
+        return
+
+    click.echo(f"\n{_ok()} {stage.name} rendered in "
+               f"{result.stats.get('render_ms', 0) / 1000:.1f}s")
+    for name, path in result.artifacts.items():
+        click.echo(f"  {name:6} {path}{_size(Path(path))}")
+    click.echo(f"\nReview it, then: blended approve {stage.name} {scene_file}")
+
+
+@main.command("approve")
+@click.argument("stage_name", type=click.Choice(list(_STAGE_ORDER)))
+@click.argument("scene_file", type=click.Path(exists=True, path_type=Path))
+def approve_cmd(stage_name: str, scene_file: Path) -> None:
+    """Sign off on a stage, freezing the IR fields it owns."""
+    from blended.approval import Ledger
+    from blended.project import load
+    from blended.stages import get as get_stage
+
+    try:
+        scene = load(scene_file)
+    except BlendedError as exc:
+        _fail(exc)
+        return
+
+    stage = get_stage(stage_name)
+    ledger = Ledger.for_scene(scene_file)
+    record = ledger.approve(scene.name, scene.model_dump(mode="json"), stage)
+    click.echo(f"{_ok()} approved {click.style(stage_name, bold=True)} "
+               f"({record.fingerprint}) at {record.approved_at}")
+    click.echo(f"  froze {len(stage.owns)} field path(s); changes to them will now be flagged")
+
+
+@main.command("status")
+@click.argument("scene_file", type=click.Path(exists=True, path_type=Path))
+def status_cmd(scene_file: Path) -> None:
+    """Show where each stage stands."""
+    from blended.approval import Ledger
+    from blended.project import load
+    from blended.stages import STAGES, get as get_stage, unowned_paths
+
+    try:
+        scene = load(scene_file)
+    except BlendedError as exc:
+        _fail(exc)
+        return
+
+    ir = scene.model_dump(mode="json")
+    ledger = Ledger.for_scene(scene_file)
+    click.echo(f"{scene.name}  ({scene.timeline.duration}s @ {scene.timeline.fps}fps)\n")
+
+    marks = {"approved": ("✓", "green"), "drifted": ("!", "yellow"), "pending": ("·", "white")}
+    for name in _STAGE_ORDER:
+        stage = get_stage(name)
+        state = ledger.state(scene.name, ir, stage)
+        mark, colour = marks[state.status]
+        click.echo(f"  {click.style(mark, fg=colour)} {name:10} {state.status:9} "
+                   f"{STAGES[name].question}")
+        if state.drifted:
+            for path in state.changed:
+                click.echo(f"      changed: {path}")
+
+    if orphans := unowned_paths(ir):
+        click.echo(f"\n  note: no stage owns {', '.join(orphans)} — "
+                   "changes there are never flagged")
 
 
 @main.command()
