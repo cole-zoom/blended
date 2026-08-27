@@ -13,6 +13,7 @@ import click
 from blended.config import ENV_VAR, find_blender
 from blended.engine.runner import RunOptions, run_job
 from blended.errors import BlendedError
+from blended.cache import RenderCache, fingerprint
 from blended.stages import STAGE_ORDER as _STAGE_ORDER
 
 
@@ -426,6 +427,170 @@ def new_cmd(name: str, asset: Path, into: Path, duration: float, fps: int,
     click.echo(f"  blended stage blocking {scene_file}    # does the motion work?")
 
 
+@main.command("patch")
+@click.argument("scene_file", type=click.Path(exists=True, path_type=Path))
+@click.argument("operations")
+@click.option("--note", default="", help="Why this change was made.")
+@click.option("--dry-run", is_flag=True, help="Validate and report, write nothing.")
+def patch_cmd(scene_file: Path, operations: str, note: str, dry_run: bool) -> None:
+    """Apply a JSON Patch to a scene, validating before anything is written.
+
+    OPERATIONS is RFC 6902 JSON — one object or a list — or a path to a .json file.
+    This is the same shape Tier 1 emits as `suggested_fix`, so a diagnostic can be piped
+    straight back in.
+
+        blended patch scene.json '{"op":"replace","path":"/timeline/duration","value":12.0}'
+    """
+    from blended.patch import PatchError, apply_to_file, dry_run as preview
+
+    raw = Path(operations).read_text() if Path(operations).exists() else operations
+    try:
+        parsed = json.loads(raw)
+    except ValueError as exc:
+        click.echo(f"{click.style('✗', fg='red')} not valid JSON: {exc}", err=True)
+        sys.exit(1)
+    ops = parsed if isinstance(parsed, list) else [parsed]
+
+    try:
+        if dry_run:
+            document = json.loads(scene_file.read_text())
+            result = preview(document, ops)
+        else:
+            result = apply_to_file(scene_file, ops, note=note)
+    except (PatchError, BlendedError) as exc:
+        _fail(exc)
+        return
+
+    for operation in ops:
+        click.echo(f"  {operation['op']:8} {operation['path']}"
+                   + (f" = {json.dumps(operation.get('value'))}" if "value" in operation else ""))
+    _print_diagnostics(result.report)
+
+    if dry_run:
+        click.echo(f"\n{_ok()} valid (dry run — nothing written)")
+    else:
+        click.echo(f"\n{_ok()} applied to {scene_file}")
+        if result.record:
+            click.echo(f"  recorded {result.record.name} (revert with: "
+                       f"blended revert {scene_file})")
+    if result.invalidates:
+        click.echo(f"  {click.style('!', fg='yellow')} unsettles: "
+                   f"{', '.join(result.invalidates)}")
+
+
+@main.command("history")
+@click.argument("scene_file", type=click.Path(exists=True, path_type=Path))
+def history_cmd(scene_file: Path) -> None:
+    """Show the patches applied to a scene."""
+    from blended.patch import entries
+
+    records = entries(scene_file)
+    if not records:
+        click.echo("no patches applied")
+        return
+    for record in records:
+        click.echo(f"{click.style(f'{record['index']:04d}', bold=True)}  "
+                   f"{record['applied_at']}  {record.get('note', '')}")
+        for operation in record["operations"]:
+            click.echo(f"      {operation['op']:8} {operation['path']}"
+                       + (f" = {json.dumps(operation.get('value'))}"
+                          if "value" in operation else ""))
+        if record.get("invalidates"):
+            click.echo(f"      unsettles: {', '.join(record['invalidates'])}")
+
+
+@main.command("revert")
+@click.argument("scene_file", type=click.Path(exists=True, path_type=Path))
+def revert_cmd(scene_file: Path) -> None:
+    """Undo the most recent patch, exactly."""
+    from blended.patch import PatchError, revert_last
+
+    try:
+        result = revert_last(scene_file)
+    except (PatchError, BlendedError) as exc:
+        _fail(exc)
+        return
+    for operation in result.operations:
+        click.echo(f"  {operation['op']:8} {operation['path']}"
+                   + (f" = {json.dumps(operation.get('value'))}" if "value" in operation else ""))
+    click.echo(f"\n{_ok()} reverted")
+
+
+@main.command("review")
+@click.argument("stage_name", type=click.Choice(list(_STAGE_ORDER)))
+@click.argument("scene_file", type=click.Path(exists=True, path_type=Path))
+@click.option("--sheet/--no-sheet", default=True, help="Build a contact sheet from the frames.")
+def review_cmd(stage_name: str, scene_file: Path, sheet: bool) -> None:
+    """Assemble a stage for review: contact sheet, checklist, probe results.
+
+    Renders nothing. Produces the artefact worth looking at and the questions worth asking —
+    the looking is done by whoever is reading, human or agent.
+    """
+    from blended.review import prepare
+
+    packet = prepare(scene_file, stage_name)
+    click.echo(f"{click.style(packet.scene, bold=True)} · {packet.stage}")
+
+    if not packet.frames:
+        click.echo(f"\n  no frames yet — run: blended stage {stage_name} {scene_file}")
+        sys.exit(1)
+    click.echo(f"  {len(packet.frames)} frame(s)")
+
+    if sheet and len(packet.frames) >= 2:
+        out = packet.frames[0].parent / f"{packet.scene}_{stage_name}_sheet.png"
+        job = {
+            "scene": {"kind": "contact_sheet",
+                      "pattern": str(packet.frames[0].parent / "*.png"),
+                      "output": str(out), "columns": 4, "max_frames": 16},
+            "render": {"output": ""},
+        }
+        try:
+            result = run_job(job)
+            if not result.stats.get("error"):
+                packet.contact_sheet = out
+                click.echo(f"  sheet {out}{_size(out)}")
+        except BlendedError as exc:
+            click.echo(f"  {click.style('!', fg='yellow')} contact sheet failed: {exc.message}")
+
+    click.echo(f"\n{click.style('Checklist', bold=True)} — "
+               "measured where possible, judged where not")
+    for item in packet.items:
+        click.echo(f"\n  {item.question}")
+        click.echo(f"    intent   {item.intent}")
+        if item.measured:
+            click.echo(f"    measured {item.measured}")
+        else:
+            click.echo(f"    measured {click.style('— needs eyes', fg='yellow')}")
+
+    path = Path(scene_file).parent / "renders" / f"{packet.scene}_{stage_name}_review.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(packet.as_dict(), indent=2))
+    click.echo(f"\n{_ok()} {path}")
+
+
+@main.command("cache")
+@click.argument("scene_file", type=click.Path(exists=True, path_type=Path))
+@click.option("--clear", "clear_scope", default=None,
+              help="Drop cached entries (a stage name, or 'all').")
+def cache_cmd(scene_file: Path, clear_scope: str | None) -> None:
+    """Inspect or clear the render cache."""
+    from blended.cache import RenderCache
+
+    cache = RenderCache(Path(scene_file).parent / "renders")
+    if clear_scope:
+        dropped = cache.clear(None if clear_scope == "all" else clear_scope)
+        click.echo(f"{_ok()} dropped {dropped} entr{'y' if dropped == 1 else 'ies'}")
+        return
+
+    rows = cache.summary()
+    if not rows:
+        click.echo("cache empty")
+        return
+    for row in rows:
+        mark = _ok() if row["present"] else click.style("✗", fg="red")
+        click.echo(f"  {mark} {row['stage']:10} {row['key']}  {row['rendered_at']}")
+
+
 @main.command("watch")
 @click.argument("scene_file", type=click.Path(exists=True, path_type=Path))
 @click.option("--stage", type=click.Choice(list(_STAGE_ORDER)), default=None,
@@ -491,9 +656,10 @@ def schema_cmd(out: Path) -> None:
 @click.option("--out", type=click.Path(path_type=Path), default=None)
 @click.option("--force", is_flag=True, help="Proceed despite upstream drift.")
 @click.option("--build-only", is_flag=True, help="Build the .blend, skip rendering.")
+@click.option("--no-cache", is_flag=True, help="Re-render even if nothing changed.")
 @click.option("--verbose", is_flag=True)
 def stage_cmd(stage_name: str, scene_file: Path, out: Path | None, force: bool,
-              build_only: bool, verbose: bool) -> None:
+              build_only: bool, no_cache: bool, verbose: bool) -> None:
     """Run one pipeline stage: build, render at its fidelity, and stop for review."""
     from blended.approval import Ledger, blocking_drift
     from blended.project import load, make_stage_job
@@ -534,6 +700,17 @@ def stage_cmd(stage_name: str, scene_file: Path, out: Path | None, force: bool,
     if build_only:
         job["render"]["output"] = ""
 
+    # A cache hit only makes sense when there is an artifact to reuse.
+    cache = RenderCache(out_dir)
+    key = fingerprint(job)
+    if not (build_only or no_cache) and (hit := cache.lookup(stage.name, key)):
+        click.echo(f"\n{click.style(stage.name, bold=True)} — {stage.question}")
+        click.echo(f"{_ok()} unchanged since {hit.rendered_at} — reusing")
+        for name, path in hit.artifacts.items():
+            click.echo(f"  {name:6} {path}{_size(Path(path))}")
+        click.echo(f"\n  (re-render anyway with --no-cache)")
+        return
+
     frames = scene.timeline.frames // max(1, stage.frame_step)
     click.echo(f"\n{click.style(stage.name, bold=True)} — {stage.question}")
     click.echo(f"  {stage.resolution[0]}x{stage.resolution[1]} {stage.engine}, "
@@ -557,6 +734,8 @@ def stage_cmd(stage_name: str, scene_file: Path, out: Path | None, force: bool,
                f"{result.stats.get('render_ms', 0) / 1000:.1f}s")
     for name, path in result.artifacts.items():
         click.echo(f"  {name:6} {path}{_size(Path(path))}")
+    if not build_only and result.artifacts:
+        cache.store(stage.name, key, result.artifacts)
     click.echo(f"\nReview it, then: blended approve {stage.name} {scene_file}")
 
 

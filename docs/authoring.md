@@ -188,6 +188,29 @@ For long renders use `blended stage final`, which renders a resumable PNG sequen
 afterwards. An interrupted mp4 is unplayable — the container needs its trailing atom — so a run
 killed at 80% loses everything. A sequence loses only the frame in flight.
 
+Change one thing without touching anything else:
+
+```bash
+blended patch scene.json '{"op":"replace","path":"/tracks/0/params/easing","value":"ease_in_out"}'
+blended history scene.json      # what was applied, and what it unsettled
+blended revert scene.json       # undo the last patch, exactly
+```
+
+A patch is validated **before** it is written, so a change that would break the scene is refused
+with the reason and nothing lands on disk. Applying one reports which stages it unsettles. Tier 1
+diagnostics carry a `suggested_fix` in exactly this format, so a reported problem can be fed
+straight back in.
+
+Ready to look at a stage properly:
+
+```bash
+blended review lighting scene.json
+```
+
+That builds a contact sheet and prints a checklist derived from what the scene claims to do,
+with everything Tier 2 could measure already filled in — so the only questions left are the ones
+that genuinely need eyes.
+
 Useful while iterating:
 
 ```bash

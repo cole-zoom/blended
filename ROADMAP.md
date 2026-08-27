@@ -296,17 +296,42 @@ the main thread crashes Blender rather than merely misbehaving.
 
 ---
 
-## Phase 5 — Iteration loop
+## Phase 5 — Iteration loop ✅ **COMPLETE**
 *The thing that makes it usable.*
 
-- [ ] `patch.py` — JSON Patch apply/validate/revert + history
-- [ ] `blended review` — contact sheet + intent checklist → Claude reads it against
-      `reference_photo.png` → returns a patch, not prose
-- [ ] Render cache keyed by IR hash
-- [ ] `blended history` / `diff` / `revert`
+- [x] `patch.py` — RFC 6902 JSON Patch, the same shape Tier 1 already emits as `suggested_fix`,
+      so a diagnostic can be applied directly
+- [x] **Validated before it lands.** A patch that would break the scene is rejected and never
+      reaches disk
+- [x] **Reversible.** Every applied patch records its computed inverse, so undo is exact
+- [x] **Scoped.** Applying reports which stages it unsettles, so a material tweak cannot quietly
+      unapprove your blocking
+- [x] `blended history` / `revert`
+- [x] Render cache keyed on the resolved IR plus the settings that change pixels
+- [x] `blended review` — contact sheet, plus a checklist derived from what the scene *claims*,
+      with Tier-2 answers filled in where they exist
 
-**Done when:** "make the camera slower, change nothing else" produces a one-line diff and a render
-provably identical everywhere else.
+**Done:** `blended patch scene.json '{"op":"replace",...}'` changes one field, records an exact
+inverse, and names what it unsettles. A breaking patch is refused with the reason and nothing
+written.
+
+### What Phase 5 established
+
+**Tier 3 needed no API.** The reviewing agent is already in the terminal and can read a PNG, so
+`review` prepares the artefact and the questions rather than calling a model. The checklist is
+*derived from the scene* — a scene with no floor is not asked about its floor — and every item
+Tier 2 can answer arrives pre-answered, leaving only the judgement calls.
+
+**Live reload had already taken the pressure off caching.** Iterating on look no longer costs a
+render at all, so the cache matters mainly for the expensive tail: re-running `final` when
+nothing that affects pixels actually changed.
+
+Two bugs found in review:
+  - Inverting an append produced `remove /tracks/-`, but `-` means "one past the end" and is not
+    a location `remove` can address. It now resolves to the concrete index.
+  - The cache could never hit for stills or sequence stages: they record a *prefix* rather than a
+    file, and `Path.exists()` on a prefix is always False. Zero-byte frames still count as
+    absent, so an interrupted write is not mistaken for a finished render.
 
 ---
 
