@@ -1,65 +1,114 @@
 """blended — live reload add-on for Blender.
 
-Install: Edit ▸ Preferences ▸ Add-ons ▸ Install…, pick this file, enable it.
+Install once: Edit ▸ Preferences ▸ Add-ons ▸ Install from Disk…, pick this file, enable it.
 Then in the 3D viewport press N and open the "blended" tab.
 
-Point it at a `*.resolved.json` written by `blended watch`, and the scene rebuilds in place
-whenever you change `scene.json` from the terminal. No render, no reopening the file, and the
-viewport stays exactly where you put it.
+**Point it at a `scene.json` and press Reload.** That is the whole setup — no terminal, no
+second window, nothing to copy between them. The add-on finds the project's CLI itself and runs
+the host resolve step (~0.1s with textures cached) before rebuilding.
 
-This works because `blended_backend` has been constrained since the beginning to import nothing
-but stdlib and `bpy` — so the same code that builds a scene during a background render builds it
-here, inside the GUI, with no subprocess and no duplicated logic.
+Why a subprocess rather than doing it all in here: the add-on runs in Blender's Python, which has
+no network and none of the host's packages. Resolving textures and validating the scene need
+both. Shelling out reuses the exact code the terminal uses instead of growing a second, weaker
+implementation that drifts.
+
+Building the scene, by contrast, happens in-process — `blended_backend` has been constrained
+since the beginning to import nothing but stdlib and `bpy`, so the same code that builds during
+a background render builds here.
 """
 
 bl_info = {
     "name": "blended — live reload",
     "author": "blended",
-    "version": (1, 0, 0),
+    "version": (2, 0, 0),
     "blender": (4, 2, 0),
     "location": "View3D ▸ Sidebar (N) ▸ blended",
-    "description": "Rebuild a blended scene in the viewport when its source changes.",
+    "description": "Point at a scene.json; rebuild it in the viewport as it changes.",
     "category": "Development",
 }
 
 import json
 import os
+import subprocess
 import sys
 import time
 
 import bpy
 from bpy.props import BoolProperty, FloatProperty, StringProperty
-from bpy.types import AddonPreferences, Operator, Panel, PropertyGroup
+from bpy.types import Operator, Panel, PropertyGroup
+
+RESOLVE_TIMEOUT = 120
 
 
-# --------------------------------------------------------------------------------------- state
+# ------------------------------------------------------------------------------------ project
 
 
-def _ensure_src_on_path(src):
-    """Put the project's `src/` on sys.path so `blended_backend` is importable.
+def find_project(scene_path):
+    """Walk up from a scene file to the repo root, identified by `pyproject.toml`."""
+    directory = os.path.dirname(os.path.abspath(scene_path))
+    while True:
+        if os.path.exists(os.path.join(directory, "pyproject.toml")):
+            return directory
+        parent = os.path.dirname(directory)
+        if parent == directory:
+            return None
+        directory = parent
 
-    The resolved file carries its own source root, so the add-on is self-configuring — there is
-    no preference to set and get wrong.
+
+def find_cli(scene_path):
+    """Locate the `blended` executable for this project.
+
+    Prefers the project's own virtualenv over anything on PATH, so a Blender launched from the
+    Finder — which inherits almost no environment — still finds the right one.
     """
-    if src and os.path.isdir(src) and src not in sys.path:
-        sys.path.insert(0, src)
+    root = find_project(scene_path)
+    if root:
+        candidate = os.path.join(root, ".venv", "bin", "blended")
+        if os.path.exists(candidate):
+            return candidate
+    for directory in os.environ.get("PATH", "").split(os.pathsep):
+        candidate = os.path.join(directory, "blended")
+        if os.path.exists(candidate):
+            return candidate
+    return None
 
 
-def _read_resolved(path):
-    with open(path) as handle:
-        return json.load(handle)
+def resolve(scene_path):
+    """Run the host resolve step. Returns (resolved_path, error_message)."""
+    cli = find_cli(scene_path)
+    if not cli:
+        return None, ("Could not find the `blended` command. Expected it at "
+                      "<project>/.venv/bin/blended — run `uv sync` in the project.")
+    try:
+        completed = subprocess.run(
+            [cli, "watch", scene_path, "--once"],
+            capture_output=True, text=True, timeout=RESOLVE_TIMEOUT,
+            cwd=find_project(scene_path) or os.path.dirname(scene_path),
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return None, f"Could not run {os.path.basename(cli)}: {exc}"
+
+    if completed.returncode != 0:
+        message = (completed.stderr or completed.stdout or "").strip()
+        return None, message.splitlines()[-1] if message else "resolve failed"
+
+    stem = os.path.splitext(scene_path)[0]
+    resolved = f"{stem}.resolved.json"
+    if not os.path.exists(resolved):
+        return None, "resolve produced no file"
+    return resolved, None
+
+
+# -------------------------------------------------------------------------------------- build
 
 
 def _build(payload):
-    """Clear and rebuild the scene from a resolved IR. Returns a short status string."""
     _ensure_src_on_path(payload.get("src"))
-
-    # Imported late and reloaded each time: editing the compiler in the terminal should take
-    # effect here without restarting Blender.
     import importlib
 
     from blended_backend import scene as scene_mod
 
+    # Reloaded each time so edits to the compiler take effect without restarting Blender.
     importlib.reload(scene_mod)
 
     began = time.perf_counter()
@@ -73,55 +122,71 @@ def _build(payload):
     return f"{stats.get('frames', '?')} frames · {took:.0f}ms"
 
 
+def _ensure_src_on_path(src):
+    """The resolved file carries its own source root, so nothing here needs configuring."""
+    if src and os.path.isdir(src) and src not in sys.path:
+        sys.path.insert(0, src)
+
+
+# -------------------------------------------------------------------------------------- state
+
+
 class BlendedState(PropertyGroup):
-    resolved: StringProperty(
-        name="Resolved scene",
-        description="A *.resolved.json written by `blended watch`",
+    scene_file: StringProperty(
+        name="Scene",
+        description="A blended scene.json — everything else is found from it",
         subtype="FILE_PATH",
         default="",
     )
-    auto: BoolProperty(
-        name="Auto reload",
-        description="Rebuild whenever the resolved file changes",
-        default=True,
-    )
-    interval: FloatProperty(
-        name="Poll (s)", default=0.5, min=0.1, max=5.0,
-        description="How often to check for changes",
+    auto: BoolProperty(name="Auto reload", default=True,
+                       description="Rebuild whenever the scene file changes")
+    interval: FloatProperty(name="Poll (s)", default=0.5, min=0.1, max=5.0)
+    frame_after: BoolProperty(
+        name="Frame after reload", default=True,
+        description="Zoom to the subject after rebuilding — useful before the lights come up",
     )
     status: StringProperty(default="idle")
     detail: StringProperty(default="")
     last_stamp: StringProperty(default="")
 
 
-# ----------------------------------------------------------------------------------- operators
+# ---------------------------------------------------------------------------------- operators
 
 
 class BLENDED_OT_reload(Operator):
     bl_idname = "blended.reload"
-    bl_label = "Reload scene"
-    bl_description = "Rebuild the scene from the resolved file"
+    bl_label = "Reload"
+    bl_description = "Resolve the scene and rebuild it in the viewport"
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context):
         state = context.scene.blended
-        path = bpy.path.abspath(state.resolved)
+        path = bpy.path.abspath(state.scene_file)
         if not path or not os.path.exists(path):
-            self.report({"ERROR"}, "Set a resolved scene file first")
+            state.status = "no scene"
+            state.detail = "Choose a scene.json above"
+            self.report({"ERROR"}, state.detail)
+            return {"CANCELLED"}
+
+        resolved, error = resolve(path)
+        if error:
+            state.status = "error"
+            state.detail = error
+            self.report({"ERROR"}, error)
             return {"CANCELLED"}
 
         try:
-            payload = _read_resolved(path)
+            with open(resolved) as handle:
+                payload = json.load(handle)
         except (OSError, ValueError) as exc:
             state.status = "unreadable"
             state.detail = str(exc)
-            self.report({"ERROR"}, f"Could not read: {exc}")
             return {"CANCELLED"}
 
         if not payload.get("ok", True):
-            # Tier 1 failed on the host. Show why rather than building something invalid.
+            # Tier 1 failed. Say why rather than leaving a stale scene on screen.
             state.status = "invalid"
-            state.detail = "; ".join(payload.get("errors", []))[:200]
+            state.detail = "; ".join(payload.get("errors", []))[:220]
             self.report({"WARNING"}, "Scene failed validation — not rebuilt")
             return {"CANCELLED"}
 
@@ -135,18 +200,20 @@ class BLENDED_OT_reload(Operator):
             return {"CANCELLED"}
 
         state.last_stamp = str(os.path.getmtime(path))
+        if state.frame_after:
+            bpy.ops.blended.frame_subject()
         return {"FINISHED"}
 
 
 class BLENDED_OT_watch(Operator):
-    """Poll the resolved file and rebuild when it changes.
+    """Poll the scene file and rebuild when it changes.
 
-    A modal timer rather than a thread: `bpy` is not thread-safe, and touching scene data from
-    anywhere but the main thread crashes Blender rather than merely misbehaving.
+    A modal timer rather than a thread: `bpy` is not thread-safe, and touching scene data off
+    the main thread crashes Blender rather than merely misbehaving.
     """
 
     bl_idname = "blended.watch"
-    bl_label = "Toggle watching"
+    bl_label = "Watch"
 
     _timer = None
     _running = False
@@ -157,15 +224,18 @@ class BLENDED_OT_watch(Operator):
 
     def modal(self, context, event):
         state = context.scene.blended
-        if not BLENDED_OT_watch._running or not state.auto:
+        if not BLENDED_OT_watch._running:
             return self.cancel(context)
         if event.type != "TIMER":
             return {"PASS_THROUGH"}
 
-        path = bpy.path.abspath(state.resolved)
+        path = bpy.path.abspath(state.scene_file)
         if path and os.path.exists(path):
             stamp = str(os.path.getmtime(path))
             if stamp != state.last_stamp:
+                # Stamped before rebuilding, so a scene that fails to build is not retried in a
+                # loop every half second.
+                state.last_stamp = stamp
                 bpy.ops.blended.reload()
                 for area in context.screen.areas:
                     area.tag_redraw()
@@ -175,7 +245,6 @@ class BLENDED_OT_watch(Operator):
         if BLENDED_OT_watch._running:
             BLENDED_OT_watch._running = False
             return {"FINISHED"}
-
         state = context.scene.blended
         BLENDED_OT_watch._running = True
         self._timer = context.window_manager.event_timer_add(
@@ -194,33 +263,27 @@ class BLENDED_OT_watch(Operator):
         return {"CANCELLED"}
 
 
-#: Staging geometry, excluded when framing. A floor can be 220 units across against a subject
-#: of 1 — framing everything zooms out until the subject is a speck, which is the opposite of
-#: what the button is for.
+#: Staging geometry, excluded when framing. A floor can be 220 units across against a subject of
+#: 1 — framing everything zooms out until the subject is a speck.
 STAGING_NAMES = {"floor", "atmosphere"}
 STAGING_SUFFIXES = ("_outline", "_lineart")
 
 
 def _is_subject(obj):
-    return (
-        obj.type == "MESH"
-        and obj.name not in STAGING_NAMES
-        and not obj.name.endswith(STAGING_SUFFIXES)
-    )
+    return (obj.type == "MESH" and obj.name not in STAGING_NAMES
+            and not obj.name.endswith(STAGING_SUFFIXES))
 
 
 class BLENDED_OT_frame_subject(Operator):
-    """Zoom the viewport to the subject, ignoring floor and atmosphere."""
-
     bl_idname = "blended.frame_subject"
-    bl_label = "Frame subject"
+    bl_label = "Frame"
+    bl_description = "Zoom to the subject, ignoring floor and atmosphere"
 
     def execute(self, context):
         for obj in context.scene.collection.all_objects:
             obj.select_set(_is_subject(obj))
         area = next((a for a in context.screen.areas if a.type == "VIEW_3D"), None)
         if area is None:
-            self.report({"ERROR"}, "No 3D viewport to frame")
             return {"CANCELLED"}
         with context.temp_override(area=area):
             bpy.ops.view3d.view_selected()
@@ -228,10 +291,9 @@ class BLENDED_OT_frame_subject(Operator):
 
 
 class BLENDED_OT_look_through_camera(Operator):
-    """Look through the scene camera — the framing the animation is actually composed for."""
-
     bl_idname = "blended.look_through_camera"
-    bl_label = "Look through camera"
+    bl_label = "Camera"
+    bl_description = "Look through the scene camera — the framing the shot is composed for"
 
     def execute(self, context):
         area = next((a for a in context.screen.areas if a.type == "VIEW_3D"), None)
@@ -243,7 +305,36 @@ class BLENDED_OT_look_through_camera(Operator):
         return {"FINISHED"}
 
 
-# --------------------------------------------------------------------------------------- panel
+class BLENDED_OT_lights_up(Operator):
+    """Jump to the brightest frame.
+
+    Scenes here often open almost black on purpose, so an unlit viewport at frame 1 looks
+    broken when it is merely early.
+    """
+
+    bl_idname = "blended.lights_up"
+    bl_label = "Lights up"
+
+    def execute(self, context):
+        scene = context.scene
+        lights = [o for o in scene.collection.all_objects if o.type == "LIGHT"]
+        if not lights:
+            self.report({"WARNING"}, "No lights in the scene")
+            return {"CANCELLED"}
+
+        best, best_energy = scene.frame_current, -1.0
+        step = max(1, (scene.frame_end - scene.frame_start) // 24)
+        for frame in range(scene.frame_start, scene.frame_end + 1, step):
+            scene.frame_set(frame)
+            total = sum(light.data.energy for light in lights)
+            if total > best_energy:
+                best, best_energy = frame, total
+        scene.frame_set(best)
+        self.report({"INFO"}, f"frame {best}")
+        return {"FINISHED"}
+
+
+# -------------------------------------------------------------------------------------- panel
 
 
 class BLENDED_PT_panel(Panel):
@@ -257,39 +348,40 @@ class BLENDED_PT_panel(Panel):
         layout = self.layout
         state = context.scene.blended
 
-        column = layout.column(align=True)
-        column.prop(state, "resolved", text="")
+        layout.prop(state, "scene_file", text="")
 
         row = layout.row(align=True)
-        row.scale_y = 1.4
+        row.scale_y = 1.5
         row.operator("blended.reload", icon="FILE_REFRESH")
 
+        watching = BLENDED_OT_watch.is_running()
         row = layout.row(align=True)
-        row.prop(state, "auto", toggle=True,
-                 icon="PLAY" if BLENDED_OT_watch.is_running() else "PAUSE")
-        row.prop(state, "interval")
+        row.operator("blended.watch",
+                     text="Stop watching" if watching else "Start watching",
+                     icon="PAUSE" if watching else "PLAY",
+                     depress=watching)
+        row.prop(state, "interval", text="")
 
-        if state.auto and not BLENDED_OT_watch.is_running():
-            layout.operator("blended.watch", text="Start watching", icon="TIME")
-        elif BLENDED_OT_watch.is_running():
-            layout.operator("blended.watch", text="Stop watching", icon="SNAP_FACE")
+        layout.prop(state, "frame_after")
 
+        layout.separator()
         row = layout.row(align=True)
-        row.operator("blended.frame_subject", text="Frame", icon="ZOOM_SELECTED")
-        row.operator("blended.look_through_camera", text="Camera", icon="CAMERA_DATA")
+        row.operator("blended.frame_subject", icon="ZOOM_SELECTED")
+        row.operator("blended.look_through_camera", icon="CAMERA_DATA")
+        layout.operator("blended.lights_up", icon="LIGHT_SUN")
 
         box = layout.box()
-        icon = {"ok": "CHECKMARK", "watching": "TIME", "idle": "DOT",
-                "error": "ERROR", "invalid": "ERROR",
-                "unreadable": "ERROR"}.get(state.status, "DOT")
+        icon = {"ok": "CHECKMARK", "watching": "TIME", "idle": "DOT"}.get(
+            state.status, "ERROR")
         box.label(text=state.status, icon=icon)
-        if state.detail:
-            for line in _wrap(state.detail, 34):
-                box.label(text=line)
+        for line in _wrap(state.detail, 32):
+            box.label(text=line)
 
 
 def _wrap(text, width):
-    """Blender labels do not wrap, so do it here rather than truncating an error."""
+    """Blender labels do not wrap, and a truncated error is a useless error."""
+    if not text:
+        return []
     words, lines, current = text.split(), [], ""
     for word in words:
         if len(current) + len(word) + 1 > width:
@@ -304,8 +396,8 @@ def _wrap(text, width):
 
 # ------------------------------------------------------------------------------- registration
 
-CLASSES = (BlendedState, BLENDED_OT_reload, BLENDED_OT_watch,
-           BLENDED_OT_frame_subject, BLENDED_OT_look_through_camera, BLENDED_PT_panel)
+CLASSES = (BlendedState, BLENDED_OT_reload, BLENDED_OT_watch, BLENDED_OT_frame_subject,
+           BLENDED_OT_look_through_camera, BLENDED_OT_lights_up, BLENDED_PT_panel)
 
 
 def register():
@@ -316,9 +408,15 @@ def register():
 
 def unregister():
     BLENDED_OT_watch._running = False
-    del bpy.types.Scene.blended
+    # Defensive: an unregister that raises leaves the add-on half-removed, and Blender then
+    # refuses to re-enable it until you restart.
+    if hasattr(bpy.types.Scene, "blended"):
+        del bpy.types.Scene.blended
     for cls in reversed(CLASSES):
-        bpy.utils.unregister_class(cls)
+        try:
+            bpy.utils.unregister_class(cls)
+        except RuntimeError:
+            pass
 
 
 if __name__ == "__main__":
