@@ -1,13 +1,16 @@
 # Blender source clone — API oracle only, never vendored (345MB)
 blender/
 
-# Machine-local: heavy, regenerable, or specific to one person's session.
-# Scene files and source art are NOT here — those are the actual work and must travel, or a
-# fresh clone has nothing to open.
-projects/*/renders/
-projects/*/history/
-projects/*/.stages.json
-projects/*/*.resolved.json
+# The repo is the tool, not the work. Scenes, source art and renders are client- and
+# machine-specific; publishing them is a leak waiting to happen and none of it is needed to
+# build or test. Start a fresh machine with `blended new`, not with someone else's project.
+projects/
+goal/
+
+# Belt-and-braces: never let a brief, a brand book or a stray asset in by accident.
+*.pdf
+*.mp4
+*.mov
 
 # Build output
 out/

@@ -12,7 +12,10 @@ dependencies = [
 [project.scripts]
 blended = "blended.cli:main"
 
-[project.optional-dependencies]
+# A dependency group, not an optional extra: `uv sync` installs groups by default but skips
+# extras, so as an extra this left every fresh clone unable to run the tests that CLAUDE.md
+# tells you to run.
+[dependency-groups]
 dev = [
     "pytest>=8.0",
 ]

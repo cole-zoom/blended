@@ -15,14 +15,6 @@ from blended.library import registry
 from blended.project import load
 from blended.verify.static import check
 
-PROJECT = Path(__file__).resolve().parent.parent / "projects" / "lancedb"
-
-# `projects/` is gitignored — scenes and renders are per-machine work product, not source.
-requires_project = pytest.mark.skipif(
-    not PROJECT.exists(), reason="projects/ scenes not present"
-)
-
-
 def minimal(**overrides) -> dict:
     data = {
         "name": "t",
@@ -137,47 +129,42 @@ def test_action_rejects_wrong_target_kind() -> None:
     assert "TARGET_KIND_MISMATCH" in {d.code for d in check(scene).errors}
 
 
-# ------------------------------------------------------------------------------ shipped scenes
+# --------------------------------------------------------------------------------- the scaffold
+
+# Deliberately not pointed at a checked-in project. `projects/` is gitignored — it is work
+# product, not source — so a test that reads one skips exactly when someone clones fresh, and a
+# skipped test looks identical to a passing one in the summary line. This builds its own
+# subject, and therefore runs everywhere.
 
 
-@requires_project
-def test_shipped_scene_is_valid() -> None:
-    scene = load(PROJECT / "scene.json")
+def scaffolded() -> SceneIR:
+    from blended.contract import scaffold, validate_scaffold
+
+    return validate_scaffold(scaffold("t", "logo.svg", duration=16.0, fps=30))
+
+
+def test_scaffolded_scene_is_valid() -> None:
+    """The scene every new project starts from must pass the checker it ships with."""
+    scene = scaffolded()
     report = check(scene)
     assert report.ok, [d.message for d in report.errors]
     assert scene.timeline.frames == 480
     assert scene.timeline.drift == 0.0
 
 
-@requires_project
-def test_shipped_scene_matches_the_goal() -> None:
-    """The brief, checked against the IR rather than against a render."""
-    scene = load(PROJECT / "scene.json")
+def test_scaffold_defaults_are_a_shot_not_a_blank_slate() -> None:
+    """Its whole claim is that the first render already moves and already has mood. A blank
+    template would make you look up every field before seeing anything at all."""
+    scene = scaffolded()
 
     orbit = next(t for t in scene.tracks if t.action == "camera.orbit")
-    sweep = abs(orbit.params["end_azimuth"] - orbit.params["start_azimuth"])
-    assert sweep >= 60, "camera must pan around the logo"
-    # "start at floor level, orbit up and away, decelerating"
-    assert orbit.params["start_elevation"] < 0, "starts below the logo's centre"
-    assert orbit.params["end_elevation"] > orbit.params["start_elevation"]
-    assert orbit.params["end_distance_scale"] > orbit.params["start_distance_scale"]
+    assert orbit.params["end_azimuth"] != orbit.params["start_azimuth"], "camera must move"
+    assert orbit.params["end_elevation"] > orbit.params["start_elevation"], "up and away"
     assert orbit.params["easing"] == "ease_out"
 
     ramp = next(t for t in scene.tracks if t.action == "light.ramp")
     assert ramp.params["start_energy"] > 0, "dim, not off"
-    assert ramp.params["end_energy"] / ramp.params["start_energy"] >= 5.0
-    assert ramp.end == pytest.approx(10.0), "brightest at 10s, then held"
-    assert any(t.action == "object.hold" and t.start == 10.0 for t in scene.tracks)
+    assert ramp.params["end_energy"] / ramp.params["start_energy"] >= 5.0, "the ramp must read"
 
-    # One lamp from the corner, not a sun.
-    assert [lt.type for lt in scene.lights] == ["spot"]
-
-    assert scene.world.color[:3] == (0.0, 0.0, 0.0), "black background"
-    assert scene.world.hdri, "wet surfaces need an environment to reflect"
-
-    floor = scene.environment.floor
-    assert floor is not None and floor.enabled and floor.texture
-    assert floor.wetness > 0
-    # Settled after measuring flicker: ripples off, relief damped where wet.
-    assert floor.ripples == 0.0
-    assert floor.wet_flatten < 0.5
+    for track in (orbit, ramp):
+        assert track.duration == scene.timeline.duration, "motion covers the whole clip"

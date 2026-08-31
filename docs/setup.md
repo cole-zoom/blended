@@ -19,13 +19,22 @@ git clone https://github.com/cole-zoom/blended.git
 cd blended
 uv sync
 uv run blended doctor          # expect ✓ Blender 5.2.1 and ✓ Bridge working
+uv run pytest                  # 145 passed
 ```
 
-`uv run blended doctor` is the real check — it launches Blender, builds a scene and reads the
-result back, so if it passes the whole bridge works.
+`doctor` is the real check — it launches Blender, builds a scene and reads the result back, so
+if it passes the whole bridge works. It needs no asset and no project.
 
-What a clone gives you: the code, the docs, the source art in `goal/`, and any scene files.
-What it does not: renders, approvals and caches, which are per-machine and regenerable.
+**A clone gives you the tool, not anyone's work.** Scenes, source art and renders are
+gitignored: they are client- and machine-specific, and this repo is public. So there is
+deliberately nothing to open on a fresh machine until you make something:
+
+```bash
+uv run blended new myproject --asset ~/path/to/logo.svg
+```
+
+That scaffolds `projects/myproject/scene.json` with a camera move and a light ramp already
+wired, so the first reload shows something moving. Bring your own SVG.
 
 ---
 
@@ -56,7 +65,7 @@ Then in Blender: **Edit ▸ Preferences ▸ Add-ons**, search `blended`, tick it
 
 1. **Quit Blender fully** (⌘Q) and reopen — this is what picks up any add-on changes
 2. Press **N** in the 3D viewport, click the **blended** tab
-3. Choose a `scene.json` in the file field
+3. Choose a `scene.json` in the file field — make one with `blended new` if you have none
 4. Press **Reload**
 
 The panel should read `ok` with something like `480 frames · 84ms`. No terminal needed.
