@@ -21,7 +21,8 @@ uv run blended new myproject --asset logo.svg
 uv run blended stage assets projects/myproject/scene.json
 ```
 
-Start with **[docs/authoring.md](docs/authoring.md)**.
+- **[docs/setup.md](docs/setup.md)** — live editing in Blender, and what to do when it looks wrong
+- **[docs/authoring.md](docs/authoring.md)** — writing a scene: the traps, not just the fields
 
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** — the design and why
 - **[ROADMAP.md](ROADMAP.md)** — phases, in build order

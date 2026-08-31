@@ -114,6 +114,7 @@ would throw away the open file.
 
 | For | Read |
 |---|---|
+| Getting set up / live reload | [docs/setup.md](docs/setup.md) |
 | Writing a scene | [docs/authoring.md](docs/authoring.md) — the traps, not just the fields |
 | Field reference | `schemas/` — generated, never hand-edited |
 | Why it is shaped this way | [ARCHITECTURE.md](ARCHITECTURE.md) |
