@@ -19,7 +19,15 @@ git clone https://github.com/cole-zoom/blended.git
 cd blended
 uv sync
 uv run blended doctor          # expect ✓ Blender 5.2.1 and ✓ Bridge working
-uv run pytest                  # 145 passed
+uv run pytest                  # 136 passed, 9 skipped
+```
+
+The 9 skips are the SVG ingestion tests, which need a logo that no longer ships. Point them at
+any SVG to run them — though the assertions about the marks/wordmark split are specific to the
+LanceDB artwork, so a different logo will fail those honestly rather than pass vacuously:
+
+```bash
+BLENDED_TEST_LOGO=~/path/to/logo.svg uv run pytest
 ```
 
 `doctor` is the real check — it launches Blender, builds a scene and reads the result back, so

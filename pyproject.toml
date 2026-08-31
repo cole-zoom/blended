@@ -33,6 +33,10 @@ packages = ["src/blended", "src/blended_backend"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["integration: launches a real Blender process (slow)"]
+# `-rs` always: a skip and a pass look identical in the summary line, and the tests most
+# likely to skip here are the ingestion ones — the area that has produced the subtlest bugs
+# in this project. If coverage silently drops on a new machine, say so on every run.
+addopts = "-rs"
 
 [tool.ruff]
 line-length = 100

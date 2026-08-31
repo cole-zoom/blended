@@ -6,6 +6,7 @@ Several of these are the first concrete implementations of assertions written in
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -15,11 +16,23 @@ from blended.config import find_blender
 from blended.engine.runner import run_job
 from blended.errors import BlenderNotFoundError
 
-LOGO = Path(__file__).resolve().parent.parent / "goal" / "dark-lancedb-logo.svg"
+# `goal/` is gitignored — source art is work product and this repo is public — so on a fresh
+# clone there is no logo and these tests have nothing to ingest. Point BLENDED_TEST_LOGO at any
+# SVG to run them anyway; the assertions about the marks/wordmark split and the 4.2:1 aspect are
+# specific to the LanceDB artwork, so a different logo will legitimately fail those.
+#
+# These are the tests worth caring about — SVG ingestion is where this project's least visible
+# bugs have lived (see the bound_box note in CLAUDE.md). `addopts = -rs` makes their absence
+# show up on every run rather than hiding inside a green summary line.
+LOGO = Path(
+    os.environ.get("BLENDED_TEST_LOGO")
+    or Path(__file__).resolve().parent.parent / "goal" / "dark-lancedb-logo.svg"
+)
 
-# `goal/` is gitignored — it holds machine-local source art. Skip rather than fail on a clone
-# that does not have it, so a missing asset reads as "not applicable" and not as a broken build.
-requires_logo = pytest.mark.skipif(not LOGO.exists(), reason="goal/ assets not present")
+requires_logo = pytest.mark.skipif(
+    not LOGO.exists(),
+    reason=f"no logo at {LOGO} — set BLENDED_TEST_LOGO to run ingestion tests",
+)
 
 
 # --------------------------------------------------------------------------- resolver (no Blender)
