@@ -100,7 +100,7 @@ pytestmark_integration = pytest.mark.integration
 @pytest.fixture(scope="module")
 def ingested():
     if not LOGO.exists():
-        pytest.skip("goal/ assets not present")
+        pytest.skip(f"no logo at {LOGO} — set BLENDED_TEST_LOGO to run ingestion tests")
     try:
         find_blender()
     except BlenderNotFoundError:
@@ -118,7 +118,7 @@ def ingested():
 def ingested_hull():
     """The geometry-based outline fallback, which has different invariants to Line Art."""
     if not LOGO.exists():
-        pytest.skip("goal/ assets not present")
+        pytest.skip(f"no logo at {LOGO} — set BLENDED_TEST_LOGO to run ingestion tests")
     try:
         find_blender()
     except BlenderNotFoundError:
