@@ -4,13 +4,38 @@ Live editing in Blender. Do this once; after that it's one field and one button.
 
 ---
 
-## First time
+## On a brand new machine
+
+```bash
+# 1. Blender 5.2 or newer — https://www.blender.org/download/
+#    Install to /Applications. If it lives elsewhere, set BLENDED_BLENDER to the
+#    executable inside it, e.g. /Applications/Blender.app/Contents/MacOS/Blender
+
+# 2. uv — https://docs.astral.sh/uv/
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 3. The project
+git clone https://github.com/cole-zoom/blended.git
+cd blended
+uv sync
+uv run blended doctor          # expect ✓ Blender 5.2.1 and ✓ Bridge working
+```
+
+`uv run blended doctor` is the real check — it launches Blender, builds a scene and reads the
+result back, so if it passes the whole bridge works.
+
+What a clone gives you: the code, the docs, the source art in `goal/`, and any scene files.
+What it does not: renders, approvals and caches, which are per-machine and regenerable.
+
+---
+
+## Updating an existing machine
 
 ```bash
 cd ~/Documents/Workspace/blended
 git pull
 uv sync
-uv run blended doctor          # expect ✓ Blender 5.2.1 and ✓ Bridge working
+uv run blended doctor
 ```
 
 **Install the add-on as a symlink, not a copy.** Blender's *Install from Disk* copies the file,
