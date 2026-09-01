@@ -17,7 +17,16 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 SCENE_IR_VERSION = 1
 
-Easing = Literal["linear", "ease_in", "ease_out", "ease_in_out"]
+#: `*_strong` are QUART — the same shapes with real acceleration. Plain SINE over a short
+#: move is close enough to linear that it reads as no easing at all. `drift_*` are EXPO,
+#: which settles so slowly it reads as drifting rather than stopping.
+Easing = Literal[
+    "linear",
+    "ease_in", "ease_out", "ease_in_out",
+    "ease_in_strong", "ease_out_strong", "ease_in_out_strong",
+    "drift_in", "drift_out", "drift_in_out",
+    "overshoot_out", "overshoot_in_out",
+]
 
 
 class Strict(BaseModel):
@@ -55,7 +64,10 @@ class Outline(Strict):
 class Asset(Strict):
     id: str
     source: str
-    extrude: float = Field(default=0.05, gt=0)
+    #: 0 is legal and is what a 2D piece wants: the curve still fills from its even-odd rule,
+    #: so counters stay holes, but the result is a flat sheet with no side walls to catch a
+    #: highlight and betray the flatness.
+    extrude: float = Field(default=0.05, ge=0)
     bevel: float = Field(default=0.004, ge=0)
     resolution: int = Field(default=12, gt=0)
     target_size: float = Field(default=1.0, gt=0)
@@ -63,8 +75,30 @@ class Asset(Strict):
     roughness: float = Field(default=0.35, ge=0, le=1)
     metallic: float = Field(default=0.0, ge=0, le=1)
     #: `plain` is a flat Principled surface. `worn` adds roughness variation and micro-relief —
-    #: the inconsistency that separates a real object from a CG one.
-    material: Literal["plain", "worn"] = "plain"
+    #: the inconsistency that separates a real object from a CG one. `flat` is shadeless
+    #: emission: the object renders as its own colour regardless of lighting, which is what 2D
+    #: work needs and is why a 2D scene carries no lights at all.
+    material: Literal["plain", "worn", "flat"] = "plain"
+    #: `auto` separates marks from a wordmark at the widest horizontal gap, which is right for
+    #: a logo that has both. On a single-word wordmark there is no such gap to find, so the
+    #: heuristic splits at the widest gap *between letters* instead and hands you two objects
+    #: divided at an arbitrary point. `none` keeps the artwork whole.
+    #: `glyphs` gives one object per traced contour group, named `<id>_g0`, `<id>_g1`, … in
+    #: left-to-right order. That is what lets letters be animated individually while staying in
+    #: register: they are normalised together as one asset, so their relative positions are
+    #: correct by construction rather than by matching two assets up by hand.
+    split: Literal["auto", "none", "glyphs"] = "auto"
+    #: An SVG whose outline becomes a `morph` shape key on this asset, for `object.morph`.
+    #: Both shapes must have the same number of closed contours; the builder resamples them to
+    #: matching point counts and pairs them up.
+    morph_target: str | None = None
+    #: Which sub-object the morph target applies to, by name suffix (e.g. `g0`). Required when
+    #: the asset splits into several objects, since only one of them morphs.
+    morph_apply_to: str | None = None
+    #: Scale of the morph target relative to the asset's normalised width. The Frame is far
+    #: larger than the R it grows out of, and a shape key can move vertices anywhere, so the
+    #: size change rides along with the shape change instead of needing its own track.
+    morph_scale: float = Field(default=1.0, gt=0)
     wear: float = Field(default=0.5, ge=0, le=1)
     wetness: float = Field(default=0.0, ge=0, le=1)
     #: Water beads clinging to the surface. Reads best in close-ups.
@@ -96,10 +130,24 @@ class Post(Strict):
 
     bloom: float = Field(default=0.0, ge=0, le=1)
     bloom_threshold: float = Field(default=1.0, ge=0)
+    #: Colour management. `agx` is Blender's own default and the right choice for 3D work: it
+    #: rolls off highlights the way a camera does. It is the wrong choice for flat 2D, because
+    #: it is a filmic curve — it desaturates and compresses, so an authored pure white renders
+    #: as grey and a brand colour does not come out as the hex you asked for. `standard` maps
+    #: authored colour straight to pixels, which is what a 2D piece needs.
+    view_transform: Literal["agx", "standard", "filmic", "raw"] = "agx"
 
 
 class Camera(Strict):
     id: str = "camera"
+    #: `ortho` removes perspective entirely: parallel projection, no foreshortening, no
+    #: vanishing point. It is what makes a flat piece read as 2D rather than as a 3D scene
+    #: viewed head-on — with a perspective lens, letters away from centre still splay
+    #: outwards, which is exactly the tell that separates the two.
+    projection: Literal["perspective", "ortho"] = "perspective"
+    #: Width of the ortho view in world units. Null auto-fits the subject using `margin` and
+    #: the output aspect. Ignored when `projection` is perspective.
+    ortho_scale: float | None = Field(default=None, gt=0)
     lens: float = Field(default=50.0, gt=0)
     margin: float = Field(default=1.15, gt=0)
     dof: DepthOfField = Field(default_factory=DepthOfField)
@@ -201,9 +249,40 @@ class Volumetrics(Strict):
     samples: int = Field(default=96, gt=0)
 
 
+class Backdrop(Strict):
+    """A flat card behind the subject, filling the frame.
+
+    Not the world colour and not an HDRI. Both of those light the scene as well as being seen,
+    which is wrong here twice over: a 2D scene has no lighting to contribute to, and the brand
+    backdrop is a specific photographic gradient rather than anything a colour or a procedural
+    ramp reproduces. A card is also the only one of the three that can be *animated* — moved,
+    scaled or cross-faded — which later beats need.
+
+    Shadeless, like everything else in a 2D scene, so it renders as exactly the pixels of its
+    source image.
+    """
+
+    enabled: bool = False
+    #: Absolute path to the image. Resolved against the scene file like an asset `source`.
+    #: Relative paths are rejected: Blender re-resolves them against the saved .blend and a
+    #: failed image load renders as flat magenta with no error anywhere.
+    image: str | None = None
+    #: Used when `image` is null, or as the card's tint when it is not.
+    color: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
+    #: Multiplier on the emitted colour. 1.0 reproduces the source image exactly.
+    strength: float = Field(default=1.0, ge=0)
+    #: How far behind the subject the card sits. Only needs to clear the subject's own depth;
+    #: under an ortho camera the distance has no effect on scale.
+    distance: float = Field(default=5.0, gt=0)
+    #: Oversize factor on the card relative to the framed view, so a camera move cannot slide
+    #: the frame off the edge of it.
+    overscan: float = Field(default=1.6, ge=1.0)
+
+
 class Environment(Strict):
     floor: Floor | None = None
     volumetrics: Volumetrics = Field(default_factory=Volumetrics)
+    backdrop: Backdrop = Field(default_factory=Backdrop)
 
 
 class Track(Strict):

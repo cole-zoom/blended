@@ -45,10 +45,22 @@ def world_bounds(objs):
 
 
 def apply_transforms(objs):
+    """Bake transforms into the data — for meshes only.
+
+    A filled 2D curve cannot take a baked out-of-plane rotation: `fill_mode = 'BOTH'` exists
+    only on 2D curves, and a 2D curve is defined to live in its own local XY plane. Applying a
+    90° rotation to one flattens it and the fill disappears. Morphing objects stay curves so
+    Blender can re-fill them each frame, so their transform is left live on the object instead
+    — which is equivalent for everything downstream, since `world_bounds` already measures in
+    world space.
+    """
+    meshes = [o for o in objs if o.type == "MESH"]
+    if not meshes:
+        return
     bpy.ops.object.select_all(action="DESELECT")
-    for obj in objs:
+    for obj in meshes:
         obj.select_set(True)
-    bpy.context.view_layer.objects.active = objs[0]
+    bpy.context.view_layer.objects.active = meshes[0]
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
 
 
@@ -64,9 +76,9 @@ def normalize(objs, target_size=1.0, upright=True):
 
     Returns a manifest dict — the thing Scene IR and the Tier-2 probes read.
     """
-    objs = [o for o in objs if o.type == "MESH"]
+    objs = [o for o in objs if o.type in ("MESH", "CURVE")]
     if not objs:
-        raise ValueError("normalize() needs at least one mesh object")
+        raise ValueError("normalize() needs at least one mesh or curve object")
 
     if upright:
         stand_upright(objs)
@@ -84,6 +96,9 @@ def normalize(objs, target_size=1.0, upright=True):
         obj.location = (obj.location - centre) * scale
         obj.scale = tuple(s * scale for s in obj.scale)
     apply_transforms(objs)
+    # Curves kept their transform live, so re-centring has to account for the rotation that
+    # was never baked: their local +Y is world -Y after standing upright.
+    bpy.context.view_layer.update()
 
     for obj in objs:
         obj.data.materials.clear()

@@ -147,9 +147,13 @@ kernels, then caches them. I have measured 150s/frame this way and been wrong by
 
 ## Live reload — skip the render entirely
 
-Most iteration does not need a render at all. Every stage already saves a `.blend` you can open
-and scrub, and the add-on goes further: it rebuilds the scene **in your open viewport** when the
-source changes.
+Most iteration does not need a render at all. Every stage already saves a `.blend` to
+`<scene-dir>/blend/` you can open and scrub — separate from `<scene-dir>/renders/` because the
+two are opened by different tools, and a directory holding five stages' worth of both is
+tedious to read. Override either with `--blend-out` / `--out`.
+
+The add-on goes further: it rebuilds the scene **in your open viewport** when the source
+changes.
 
 ```bash
 blended watch projects/myproject/scene.json      # republishes on every save

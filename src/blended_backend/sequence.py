@@ -85,14 +85,32 @@ def render_sequence(scene, cfg, *, resume=True, progress_every=10):
     return stats
 
 
-def encode(prefix, output, *, fps=30, quality="HIGH"):
+def encode(prefix, output, *, fps=30, quality="HIGH", frame_start=None, frame_end=None):
     """Encode a PNG sequence to H.264 through Blender's sequencer.
 
     A fresh scene rather than the render scene: the sequencer needs its own resolution and frame
     range, and mutating the scene that produced the frames would invalidate anything measured
     from it afterwards.
+
+    The frame range is honoured rather than "whatever PNGs are in the folder". Sequence renders
+    are deliberately resumable, so frames survive between runs — and if a scene is *shortened*,
+    the leftovers from the longer version are still sitting there. Globbing them all silently
+    encodes a video longer than the scene, which is exactly what happened: a 180-frame scene
+    re-encoded 270 stale frames and reported success.
     """
     files = sorted(glob.glob(f"{prefix}*.png"))
+    if frame_start is not None or frame_end is not None:
+        lo = frame_start if frame_start is not None else -(1 << 30)
+        hi = frame_end if frame_end is not None else (1 << 30)
+        kept = []
+        for path in files:
+            digits = re.findall(r"(\d+)\.png$", path)
+            if digits and lo <= int(digits[0]) <= hi:
+                kept.append(path)
+        stale = len(files) - len(kept)
+        files = kept
+        if stale:
+            print(f"[blended] ignoring {stale} frame(s) outside {lo}-{hi}")
     if not files:
         return {"error": f"no frames to encode at {prefix!r}"}
 

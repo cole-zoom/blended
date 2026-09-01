@@ -42,7 +42,7 @@ def run(job, job_id):
 
     t0 = time.perf_counter()
     scene_mod.reset()
-    build_stats = scene_mod.build(job.get("scene") or {})
+    build_stats = scene_mod.build(job.get("scene") or {}, render_cfg=job.get("render") or {})
     stats["build_ms"] = round((time.perf_counter() - t0) * 1000, 1)
     stats.update(build_stats)
 
@@ -77,7 +77,9 @@ def run(job, job_id):
             artifacts["frames"] = stats["sequence"]["frames_path"]
             if encode_to := render_cfg.get("encode_to"):
                 stats["encode"] = sequence.encode(
-                    render_cfg["output"], encode_to, fps=scene.render.fps
+                    render_cfg["output"], encode_to, fps=scene.render.fps,
+                    frame_start=render_cfg.get("frame_start"),
+                    frame_end=render_cfg.get("frame_end"),
                 )
                 if "output" in stats["encode"]:
                     artifacts["video"] = stats["encode"]["output"]

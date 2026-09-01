@@ -28,7 +28,15 @@
               "linear",
               "ease_in",
               "ease_out",
-              "ease_in_out"
+              "ease_in_out",
+              "ease_in_strong",
+              "ease_out_strong",
+              "ease_in_out_strong",
+              "drift_in",
+              "drift_out",
+              "drift_in_out",
+              "overshoot_out",
+              "overshoot_in_out"
             ],
             "title": "Easing",
             "type": "string"
@@ -105,7 +113,15 @@
               "linear",
               "ease_in",
               "ease_out",
-              "ease_in_out"
+              "ease_in_out",
+              "ease_in_strong",
+              "ease_out_strong",
+              "ease_in_out_strong",
+              "drift_in",
+              "drift_out",
+              "drift_in_out",
+              "overshoot_out",
+              "overshoot_in_out"
             ],
             "title": "Easing",
             "type": "string"
@@ -138,6 +154,61 @@
         "energy"
       ]
     },
+    "object.fade": {
+      "accepts": [
+        "asset"
+      ],
+      "params": {
+        "additionalProperties": false,
+        "description": "Animate a flat material's opacity.\n\nDistinct from `object.reveal`: a wipe uncovers an object with a moving edge, a fade changes\nhow present the whole of it is. The two multiply into the same alpha, so an object can be\ndoing both at once without either action knowing about the other.",
+        "properties": {
+          "easing": {
+            "default": "ease_out_strong",
+            "enum": [
+              "linear",
+              "ease_in",
+              "ease_out",
+              "ease_in_out",
+              "ease_in_strong",
+              "ease_out_strong",
+              "ease_in_out_strong",
+              "drift_in",
+              "drift_out",
+              "drift_in_out",
+              "overshoot_out",
+              "overshoot_in_out"
+            ],
+            "title": "Easing",
+            "type": "string"
+          },
+          "end": {
+            "default": 1.0,
+            "maximum": 1,
+            "minimum": 0,
+            "title": "End",
+            "type": "number"
+          },
+          "start": {
+            "default": 0.0,
+            "maximum": 1,
+            "minimum": 0,
+            "title": "Start",
+            "type": "number"
+          }
+        },
+        "title": "FadeParams",
+        "type": "object"
+      },
+      "tags": [
+        "object",
+        "reveal",
+        "2d"
+      ],
+      "timing": "stretchable",
+      "writes": [
+        "opacity"
+      ]
+    },
     "object.hold": {
       "accepts": [
         "asset",
@@ -156,6 +227,184 @@
       ],
       "timing": "stretchable",
       "writes": []
+    },
+    "object.morph": {
+      "accepts": [
+        "asset"
+      ],
+      "params": {
+        "additionalProperties": false,
+        "description": "Drive a shape key built at asset time by `morph_target`.\n\nOnly the blend value is animated here. The correspondence between the two outlines \u2014\ncontour pairing, resampling, winding and start-index alignment \u2014 is compiled once when the\nasset is built, so nothing expensive or non-deterministic happens per frame.",
+        "properties": {
+          "easing": {
+            "default": "ease_in_out",
+            "enum": [
+              "linear",
+              "ease_in",
+              "ease_out",
+              "ease_in_out",
+              "ease_in_strong",
+              "ease_out_strong",
+              "ease_in_out_strong",
+              "drift_in",
+              "drift_out",
+              "drift_in_out",
+              "overshoot_out",
+              "overshoot_in_out"
+            ],
+            "title": "Easing",
+            "type": "string"
+          },
+          "end": {
+            "default": 1.0,
+            "maximum": 1,
+            "minimum": 0,
+            "title": "End",
+            "type": "number"
+          },
+          "key": {
+            "default": "morph",
+            "description": "Shape key name.",
+            "title": "Key",
+            "type": "string"
+          },
+          "start": {
+            "default": 0.0,
+            "maximum": 1,
+            "minimum": 0,
+            "title": "Start",
+            "type": "number"
+          }
+        },
+        "title": "MorphParams",
+        "type": "object"
+      },
+      "tags": [
+        "object",
+        "transform",
+        "2d"
+      ],
+      "timing": "stretchable",
+      "writes": [
+        "shape"
+      ]
+    },
+    "object.move": {
+      "accepts": [
+        "asset"
+      ],
+      "params": {
+        "additionalProperties": false,
+        "description": "Translate between two offsets, in units of the asset's normalised width.\n\nOffsets, not absolute positions: the asset is already centred, so its resting place is 0.\n`end_x: -0.404` reads as \"left by 40% of the wordmark's width\" and stays correct if the\nartwork is re-traced at a different size.",
+        "properties": {
+          "easing": {
+            "default": "ease_in_out",
+            "enum": [
+              "linear",
+              "ease_in",
+              "ease_out",
+              "ease_in_out",
+              "ease_in_strong",
+              "ease_out_strong",
+              "ease_in_out_strong",
+              "drift_in",
+              "drift_out",
+              "drift_in_out",
+              "overshoot_out",
+              "overshoot_in_out"
+            ],
+            "title": "Easing",
+            "type": "string"
+          },
+          "end_x": {
+            "default": 0.0,
+            "description": "End offset, asset widths.",
+            "title": "End X",
+            "type": "number"
+          },
+          "end_z": {
+            "default": 0.0,
+            "title": "End Z",
+            "type": "number"
+          },
+          "start_x": {
+            "default": 0.0,
+            "description": "Start offset, asset widths.",
+            "title": "Start X",
+            "type": "number"
+          },
+          "start_z": {
+            "default": 0.0,
+            "description": "Vertical start offset, asset widths.",
+            "title": "Start Z",
+            "type": "number"
+          }
+        },
+        "title": "MoveParams",
+        "type": "object"
+      },
+      "tags": [
+        "object",
+        "motion",
+        "2d"
+      ],
+      "timing": "stretchable",
+      "writes": [
+        "transform"
+      ]
+    },
+    "object.reveal": {
+      "accepts": [
+        "asset"
+      ],
+      "params": {
+        "additionalProperties": false,
+        "description": "Sweep a wipe edge across the target. Everything left of the edge is visible.\n\nPositions are asset widths from the asset's centre, so -0.5 is its left edge and +0.5 its\nright. Running `end_x` below `start_x` un-reveals, which is how the reverse beat is built\nwithout a second action.",
+        "properties": {
+          "easing": {
+            "default": "ease_in_out",
+            "enum": [
+              "linear",
+              "ease_in",
+              "ease_out",
+              "ease_in_out",
+              "ease_in_strong",
+              "ease_out_strong",
+              "ease_in_out_strong",
+              "drift_in",
+              "drift_out",
+              "drift_in_out",
+              "overshoot_out",
+              "overshoot_in_out"
+            ],
+            "title": "Easing",
+            "type": "string"
+          },
+          "end_x": {
+            "default": 0.5,
+            "description": "Edge end, asset widths from centre.",
+            "title": "End X",
+            "type": "number"
+          },
+          "start_x": {
+            "default": -0.5,
+            "description": "Edge start, asset widths from centre.",
+            "title": "Start X",
+            "type": "number"
+          }
+        },
+        "title": "RevealParams",
+        "type": "object"
+      },
+      "tags": [
+        "object",
+        "reveal",
+        "2d"
+      ],
+      "timing": "stretchable",
+      "writes": [
+        "wipe"
+      ]
     },
     "object.spin": {
       "accepts": [
@@ -180,7 +429,15 @@
               "linear",
               "ease_in",
               "ease_out",
-              "ease_in_out"
+              "ease_in_out",
+              "ease_in_strong",
+              "ease_out_strong",
+              "ease_in_out_strong",
+              "drift_in",
+              "drift_out",
+              "drift_in_out",
+              "overshoot_out",
+              "overshoot_in_out"
             ],
             "title": "Easing",
             "type": "string"
@@ -201,6 +458,99 @@
       "timing": "stretchable",
       "writes": [
         "transform"
+      ]
+    },
+    "object.tint": {
+      "accepts": [
+        "asset"
+      ],
+      "params": {
+        "additionalProperties": false,
+        "description": "Fade a flat material's colour. Linear RGBA, not sRGB hex.",
+        "properties": {
+          "easing": {
+            "default": "ease_in_out",
+            "enum": [
+              "linear",
+              "ease_in",
+              "ease_out",
+              "ease_in_out",
+              "ease_in_strong",
+              "ease_out_strong",
+              "ease_in_out_strong",
+              "drift_in",
+              "drift_out",
+              "drift_in_out",
+              "overshoot_out",
+              "overshoot_in_out"
+            ],
+            "title": "Easing",
+            "type": "string"
+          },
+          "end_color": {
+            "default": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "maxItems": 4,
+            "minItems": 4,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "End Color",
+            "type": "array"
+          },
+          "start_color": {
+            "default": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "maxItems": 4,
+            "minItems": 4,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Start Color",
+            "type": "array"
+          }
+        },
+        "title": "TintParams",
+        "type": "object"
+      },
+      "tags": [
+        "object",
+        "mood",
+        "2d"
+      ],
+      "timing": "stretchable",
+      "writes": [
+        "color"
       ]
     }
   },

@@ -56,11 +56,28 @@ def fit_distance(camera_obj, objs, margin=1.15):
 
 
 def add_camera(objs, *, lens=50.0, azimuth=0.0, elevation=0.0, margin=1.15, distance=None,
-               clip_start=0.01, clip_end=1000.0, name="camera"):
-    """Create a camera framing `objs`, and make it the scene camera."""
+               clip_start=0.01, clip_end=1000.0, name="camera",
+               projection="perspective", ortho_scale=None, aspect=16.0 / 9.0):
+    """Create a camera framing `objs`, and make it the scene camera.
+
+    `aspect` has to be passed in rather than read off the scene: `build()` runs before render
+    settings are applied, so `scene.render.resolution_*` still holds Blender's defaults here.
+    It only matters for ortho auto-fit, where getting it wrong crops the subject.
+    """
     scene = bpy.context.scene
     data = bpy.data.cameras.new(name)
     data.lens = lens
+    if projection == "ortho":
+        data.type = "ORTHO"
+        if ortho_scale is None:
+            lo, hi = world_bounds(objs)
+            width, height = hi.x - lo.x, hi.z - lo.z
+            # ortho_scale spans the sensor's LONGER axis, which for every output we render is
+            # the width. So a subject taller than it is wide has to be converted into the
+            # width it needs before the margin is applied, or it fits horizontally and gets
+            # cropped top and bottom.
+            ortho_scale = max(width, height * aspect) * margin
+        data.ortho_scale = ortho_scale
     # Blender's 0.1 default near clip is bigger than this whole subject. A camera that starts
     # beside the logo sits ~0.1 units from it, so the default silently clips away the very
     # geometry the shot is about.
@@ -77,6 +94,56 @@ def add_camera(objs, *, lens=50.0, azimuth=0.0, elevation=0.0, margin=1.15, dist
     cam.location = spherical(target, distance, azimuth, elevation)
     aim_at(cam, target)
     return cam, target, distance
+
+
+def add_backdrop(camera, target, *, image_path=None, color=(1.0, 1.0, 1.0, 1.0),
+                 strength=1.0, distance=5.0, overscan=1.6, aspect=16.0 / 9.0,
+                 name="backdrop"):
+    """A shadeless card behind the subject, parallel to the image plane.
+
+    Built in XY with its normal on +Z and then given the camera's own rotation, rather than
+    placed on a world axis. The camera looks down its local -Z, so copying its rotation makes
+    the card exactly parallel to the frame for *any* camera orientation — no trigonometry per
+    camera angle, and it stays correct if the camera is later moved.
+    """
+    from blended_backend import materials
+
+    if camera.data.type == "ORTHO":
+        width = camera.data.ortho_scale * overscan
+    else:
+        depth = (Vector(target) - camera.location).length + distance
+        width = 2.0 * depth * math.tan(camera.data.angle_x / 2.0) * overscan
+    height = width / aspect
+
+    mesh = bpy.data.meshes.new(name)
+    half_w, half_h = width / 2.0, height / 2.0
+    mesh.from_pydata(
+        [(-half_w, -half_h, 0.0), (half_w, -half_h, 0.0),
+         (half_w, half_h, 0.0), (-half_w, half_h, 0.0)],
+        [],
+        [(0, 1, 2, 3)],
+    )
+    uv = mesh.uv_layers.new(name="UVMap")
+    for i, coords in enumerate(((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0))):
+        uv.data[i].uv = coords
+    mesh.update()
+
+    card = bpy.data.objects.new(name, mesh)
+    bpy.context.scene.collection.objects.link(card)
+
+    # From `rotation_euler`, NOT `matrix_world`. The camera was positioned moments ago and its
+    # world matrix is still stale until the depsgraph runs — reading it here yields identity,
+    # which silently puts the card 6.8 units below the scene instead of behind it. Same trap as
+    # `bound_box` before a view-layer update, and just as quiet.
+    forward = camera.rotation_euler.to_quaternion() @ Vector((0.0, 0.0, -1.0))
+    reach = (Vector(target) - camera.location).length + distance
+    card.location = camera.location + forward * reach
+    card.rotation_euler = camera.rotation_euler.copy()
+
+    card.data.materials.append(
+        materials.backdrop(f"{name}_surface", image_path, tuple(color), strength)
+    )
+    return card
 
 
 def add_key_light(target, *, energy=200.0, azimuth=-35.0, elevation=35.0, distance=4.0,

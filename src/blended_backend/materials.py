@@ -34,16 +34,118 @@ def surface(name, base_color=(0.9, 0.9, 0.92, 1.0), roughness=0.35, metallic=0.0
     return material
 
 
-def unlit(name, color=(0.0, 0.0, 0.0, 1.0), backface_culling=True):
-    """Shadeless colour — used by the geometry outline modes."""
+def unlit(name, color=(0.0, 0.0, 0.0, 1.0), backface_culling=True, wipe=False,
+          fade=False):
+    """Shadeless colour — used by the geometry outline modes and by 2D `flat` assets.
+
+    With `wipe`, the surface additionally gets a hard-edged reveal: world X is compared against
+    a threshold, and everything to the right of it is transparent. Two nodes are named so the
+    actions can find them without walking the tree — `flat_color` for `object.tint` and
+    `wipe_threshold` for `object.reveal`.
+
+    Alpha **CLIP** rather than BLEND: the edge is binary, so there is nothing to sort, and
+    blended transparency in EEVEE sorts per-object and would let one letter incorrectly occlude
+    another the moment two overlap.
+    """
     material = bpy.data.materials.new(name)
     tree = _clear(material)
     out = tree.nodes.new("ShaderNodeOutputMaterial")
     emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "flat_color"
     emission.inputs["Color"].default_value = color
     emission.inputs["Strength"].default_value = 1.0
-    tree.links.new(emission.outputs["Emission"], out.inputs["Surface"])
     material.use_backface_culling = backface_culling
+
+    if not (wipe or fade):
+        tree.links.new(emission.outputs["Emission"], out.inputs["Surface"])
+        return material
+
+    # One alpha chain serves both effects, because they multiply: a letter can be half faded
+    # in *and* half revealed at once without either action knowing about the other. Keeping
+    # them as separate named Value nodes is what lets two actions animate one material
+    # without fighting over the same socket.
+    transparent = tree.nodes.new("ShaderNodeBsdfTransparent")
+    mix = tree.nodes.new("ShaderNodeMixShader")
+
+    opacity = tree.nodes.new("ShaderNodeValue")
+    opacity.name = "opacity"
+    opacity.outputs[0].default_value = 1.0
+
+    if not wipe:
+        tree.links.new(opacity.outputs[0], mix.inputs["Fac"])
+    else:
+        geometry = tree.nodes.new("ShaderNodeNewGeometry")
+        separate = tree.nodes.new("ShaderNodeSeparateXYZ")
+        threshold = tree.nodes.new("ShaderNodeValue")
+        threshold.name = "wipe_threshold"
+        # Far to the right, so a wipe-capable material is fully visible until something
+        # animates it. Starting at 0 would half-hide any object crossing the origin.
+        threshold.outputs[0].default_value = 1.0e6
+
+        compare = tree.nodes.new("ShaderNodeMath")
+        compare.operation = "LESS_THAN"
+        combine = tree.nodes.new("ShaderNodeMath")
+        combine.operation = "MULTIPLY"
+
+        tree.links.new(geometry.outputs["Position"], separate.inputs["Vector"])
+        tree.links.new(separate.outputs["X"], compare.inputs[0])
+        tree.links.new(threshold.outputs[0], compare.inputs[1])
+        tree.links.new(compare.outputs["Value"], combine.inputs[0])
+        tree.links.new(opacity.outputs[0], combine.inputs[1])
+        tree.links.new(combine.outputs["Value"], mix.inputs["Fac"])
+
+    # fac 0 -> transparent, fac 1 -> emission.
+    tree.links.new(transparent.outputs["BSDF"], mix.inputs[1])
+    tree.links.new(emission.outputs["Emission"], mix.inputs[2])
+    tree.links.new(mix.outputs["Shader"], out.inputs["Surface"])
+
+    # EEVEE Next resolves transparency by `surface_render_method`, and its default —
+    # DITHERED — is stochastic: it discards pixels to approximate alpha, which stipples the
+    # *opaque* parts of the glyph with black speckle even where the wipe is fully open. The
+    # legacy `blend_method` alone does not override it. BLENDED does real alpha compositing,
+    # which is what a hard binary edge needs, and the usual objection to it (per-object sort
+    # order) cannot bite here: the letters are coplanar and never overlap.
+    material.blend_method = "BLEND"
+    if hasattr(material, "surface_render_method"):
+        material.surface_render_method = "BLENDED"
+    material.use_backface_culling = backface_culling
+    return material
+
+
+def backdrop(name, image_path=None, color=(1.0, 1.0, 1.0, 1.0), strength=1.0):
+    """Shadeless card material: an image, or a flat colour, emitted exactly as authored.
+
+    The image is loaded as **sRGB**, unlike every other texture in this module. The others are
+    data — roughness, normals — where sRGB would apply a gamma curve to numbers that are not
+    colours. This one is a photograph and genuinely is colour, so sRGB is what reproduces it.
+
+    A missing image renders as flat magenta with no error, so the path is checked here rather
+    than discovered in the render.
+    """
+    material = bpy.data.materials.new(name)
+    tree = _clear(material)
+    out = tree.nodes.new("ShaderNodeOutputMaterial")
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.inputs["Strength"].default_value = strength
+
+    if image_path:
+        if not os.path.isabs(image_path):
+            raise ValueError(
+                f"backdrop image must be an absolute path, got {image_path!r} — Blender "
+                "re-resolves relative paths against the saved .blend and a failed load "
+                "renders as flat magenta with no error"
+            )
+        if not os.path.exists(image_path):
+            raise ValueError(f"backdrop image not found: {image_path!r}")
+        tex = tree.nodes.new("ShaderNodeTexImage")
+        tex.image = bpy.data.images.load(image_path, check_existing=True)
+        tex.image.colorspace_settings.name = "sRGB"
+        tex.extension = "EXTEND"
+        tree.links.new(tex.outputs["Color"], emission.inputs["Color"])
+    else:
+        emission.inputs["Color"].default_value = color
+
+    tree.links.new(emission.outputs["Emission"], out.inputs["Surface"])
     return material
 
 

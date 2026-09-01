@@ -53,8 +53,12 @@ def clear():
                     collection.remove(item)
 
 
-def build(spec):
-    """Dispatch on scene kind. Returns a dict of stats about what was built."""
+def build(spec, render_cfg=None):
+    """Dispatch on scene kind. Returns a dict of stats about what was built.
+
+    `render_cfg` is read only for the output aspect ratio, which ortho framing needs; the
+    build never applies render settings itself.
+    """
     kind = spec.get("kind", "demo_cube")
     if kind == "demo_cube":
         return _build_demo_cube(spec)
@@ -81,7 +85,9 @@ def build(spec):
     if kind == "scene_ir":
         from blended_backend import build as build_mod
 
-        return build_mod.build(spec["ir"])
+        resolution = (render_cfg or {}).get("resolution") or [16, 9]
+        aspect = resolution[0] / resolution[1] if resolution[1] else 16.0 / 9.0
+        return build_mod.build(spec["ir"], aspect=aspect)
     raise ValueError(
         f"Unknown scene kind {kind!r} (known: 'demo_cube', 'logo_still', 'scene_ir', 'contact_sheet', 'encode', 'flicker')"
     )
@@ -101,9 +107,7 @@ def _build_logo_still(spec):
     names = spec.get("names", ["logo_marks", "logo_text"])
 
     curves = svg_ingest.import_svg(source)
-    if len(curves) > 1:
-        raise ValueError(f"expected 1 curve object from {source!r}, got {len(curves)}")
-    curve = curves[0]
+    curve = svg_ingest.join_curves(curves)
 
     split_x, gap = svg_ingest.find_x_gap(curve)
     if split_x is None:

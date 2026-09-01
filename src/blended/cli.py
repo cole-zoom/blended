@@ -203,8 +203,14 @@ def render_logo(
     cache.store(request, asset)
 
     click.echo(f"\n{_ok()} Ingested tier {request.tier}, lossy={request.lossy}")
-    click.echo(f"  split at x={result.stats.get('split_x'):.4f} "
-               f"(gap {result.stats.get('split_gap'):.4f})")
+    # `split_x` is None whenever the artwork is one cluster — a lone monogram, a frame, any
+    # logo without a marks/wordmark gap. That is a normal outcome, not an error, so it must
+    # not crash the summary the way a bare :.4f on None does.
+    if (split_x := result.stats.get("split_x")) is None:
+        click.echo("  no marks/wordmark split — single cluster")
+    else:
+        click.echo(f"  split at x={split_x:.4f} "
+                   f"(gap {result.stats.get('split_gap') or 0.0:.4f})")
     click.echo(f"  aspect {asset.get('aspect')}  depth ratio {asset.get('depth_ratio')}")
     for name, report in topo.items():
         flag = "✓" if report["is_manifold"] else "✗"
@@ -245,7 +251,9 @@ def check(scene_file: Path) -> None:
 @click.option("--quality", type=click.Choice(["draft", "preview", "final"]), default="preview",
               show_default=True)
 @click.option("--out", type=click.Path(path_type=Path), default=None,
-              help="Output directory. Defaults to the scene file's directory.")
+              help="Render directory. Defaults to <scene-dir>/renders.")
+@click.option("--blend-out", type=click.Path(path_type=Path), default=None,
+              help="Directory for the .blend. Defaults to <scene-dir>/blend.")
 @click.option("--stills", is_flag=True, help="Render a PNG sequence instead of video.")
 @click.option("--engine", type=click.Choice(["eevee", "cycles"]), default="eevee",
               show_default=True,
@@ -254,8 +262,9 @@ def check(scene_file: Path) -> None:
               help="Override the quality preset's sample count.")
 @click.option("--build-only", is_flag=True, help="Build the .blend and stop before rendering.")
 @click.option("--verbose", is_flag=True)
-def render(scene_file: Path, quality: str, out: Path | None, stills: bool, engine: str,
-           samples: int | None, build_only: bool, verbose: bool) -> None:
+def render(scene_file: Path, quality: str, out: Path | None, blend_out: Path | None,
+           stills: bool, engine: str, samples: int | None, build_only: bool,
+           verbose: bool) -> None:
     """Compile a scene to a .blend and render it."""
     from blended.project import load, make_job
     from blended.verify.static import check as run_check
@@ -273,7 +282,8 @@ def render(scene_file: Path, quality: str, out: Path | None, stills: bool, engin
         sys.exit(1)
 
     out_dir = (out or scene_file.parent / "renders").resolve()
-    job = make_job(scene, quality=quality, out_dir=out_dir,
+    blend_dir = (blend_out or scene_file.parent / "blend").resolve()
+    job = make_job(scene, quality=quality, out_dir=out_dir, blend_dir=blend_dir,
                    media="stills" if stills else "video", engine=engine)
     if engine == "cycles":
         job["render"]["engine"] = "CYCLES"
@@ -622,8 +632,10 @@ def watch_cmd(scene_file: Path, stage: str | None, interval: float, once: bool) 
         return
 
     click.echo(f"{_ok()} {first.path}")
-    click.echo(f"\nIn Blender: press N ▸ blended tab ▸ set Resolved scene to")
-    click.echo(f"  {first.path}")
+    # The add-on's field takes the *scene* file and runs this resolve itself — pointing it at
+    # the resolved file (the v1 workflow) leaves it resolving a resolved scene.
+    click.echo(f"\nIn Blender: press N ▸ blended tab ▸ set Scene to")
+    click.echo(f"  {Path(first.path).with_name(Path(scene_file).name)}")
     if once:
         return
 
@@ -653,13 +665,21 @@ def schema_cmd(out: Path) -> None:
 @main.command("stage")
 @click.argument("stage_name", type=click.Choice(list(_STAGE_ORDER)))
 @click.argument("scene_file", type=click.Path(exists=True, path_type=Path))
-@click.option("--out", type=click.Path(path_type=Path), default=None)
+@click.option("--out", type=click.Path(path_type=Path), default=None,
+              help="Render directory. Defaults to <scene-dir>/renders.")
+@click.option("--blend-out", type=click.Path(path_type=Path), default=None,
+              help="Directory for the .blend. Defaults to <scene-dir>/blend — deliberately "
+                   "not the render directory, since the two are opened by different tools.")
+@click.option("--engine", type=click.Choice(["eevee", "cycles"]), default=None,
+              help="Override the stage's engine. A scene lit entirely by emission has nothing "
+                   "for a path tracer to compute, so `final` can be told to stay on EEVEE.")
 @click.option("--force", is_flag=True, help="Proceed despite upstream drift.")
 @click.option("--build-only", is_flag=True, help="Build the .blend, skip rendering.")
 @click.option("--no-cache", is_flag=True, help="Re-render even if nothing changed.")
 @click.option("--verbose", is_flag=True)
-def stage_cmd(stage_name: str, scene_file: Path, out: Path | None, force: bool,
-              build_only: bool, no_cache: bool, verbose: bool) -> None:
+def stage_cmd(stage_name: str, scene_file: Path, out: Path | None, blend_out: Path | None,
+              engine: str | None, force: bool, build_only: bool, no_cache: bool,
+              verbose: bool) -> None:
     """Run one pipeline stage: build, render at its fidelity, and stop for review."""
     from blended.approval import Ledger, blocking_drift
     from blended.project import load, make_stage_job
@@ -696,7 +716,11 @@ def stage_cmd(stage_name: str, scene_file: Path, out: Path | None, force: bool,
         click.echo("  proceeding anyway (--force)", err=True)
 
     out_dir = (out or scene_file.parent / "renders").resolve()
-    job = make_stage_job(scene, stage, out_dir=out_dir)
+    blend_dir = (blend_out or scene_file.parent / "blend").resolve()
+    job = make_stage_job(scene, stage, out_dir=out_dir, blend_dir=blend_dir)
+    if engine is not None:
+        job["render"]["engine"] = "CYCLES" if engine == "cycles" else "BLENDER_EEVEE"
+        job["render"]["device"] = "GPU"
     if build_only:
         job["render"]["output"] = ""
 
@@ -713,7 +737,11 @@ def stage_cmd(stage_name: str, scene_file: Path, out: Path | None, force: bool,
 
     frames = scene.timeline.frames // max(1, stage.frame_step)
     click.echo(f"\n{click.style(stage.name, bold=True)} — {stage.question}")
-    click.echo(f"  {stage.resolution[0]}x{stage.resolution[1]} {stage.engine}, "
+    # Report the engine that will actually run, not the stage's declared default — an
+    # overridden `final` printing "cycles" while rendering EEVEE is worse than no label.
+    engine_used = "cycles" if job["render"]["engine"] == "CYCLES" else "eevee"
+    override = "" if engine_used == stage.engine else f" (overriding {stage.engine})"
+    click.echo(f"  {stage.resolution[0]}x{stage.resolution[1]} {engine_used}{override}, "
                f"{frames} frame(s), suppressing: {', '.join(stage.suppress) or 'nothing'}")
 
     try:

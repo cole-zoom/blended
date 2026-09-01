@@ -20,7 +20,7 @@ a background render builds here.
 bl_info = {
     "name": "blended — live reload",
     "author": "blended",
-    "version": (2, 0, 0),
+    "version": (2, 0, 2),
     "blender": (4, 2, 0),
     "location": "View3D ▸ Sidebar (N) ▸ blended",
     "description": "Point at a scene.json; rebuild it in the viewport as it changes.",
@@ -102,21 +102,44 @@ def resolve(scene_path):
 # -------------------------------------------------------------------------------------- build
 
 
+def _purge_backend():
+    """Drop every `blended_backend` module so the next import is genuinely fresh.
+
+    Reloading just the entry module is not enough, and fails in a confusing way. `scene`
+    imports `build`, `staging` and the rest *lazily, inside functions*, so `importlib.reload`
+    on `scene` alone leaves every one of them cached from an earlier session. The two halves
+    then disagree — a freshly-reloaded caller passing an argument a stale callee has never
+    heard of — and it surfaces as `TypeError: build() got an unexpected keyword argument`
+    rather than as anything that points at staleness.
+
+    Purging by name is safe here precisely because of the import rule this package lives
+    under: `blended_backend` imports stdlib and `bpy` only, so there is no third-party state
+    to lose and nothing outside the package holds a reference into it.
+    """
+    for name in [n for n in sys.modules
+                 if n == "blended_backend" or n.startswith("blended_backend.")]:
+        del sys.modules[name]
+
+
 def _build(payload):
     _ensure_src_on_path(payload.get("src"))
-    import importlib
 
+    # Before the import, so the whole package is rebuilt from source every reload.
+    _purge_backend()
     from blended_backend import scene as scene_mod
 
-    # Reloaded each time so edits to the compiler take effect without restarting Blender.
-    importlib.reload(scene_mod)
-
+    scene = bpy.context.scene
     began = time.perf_counter()
     scene_mod.clear()
-    stats = scene_mod.build({"kind": "scene_ir", "ir": payload["ir"]})
+    stats = scene_mod.build(
+        {"kind": "scene_ir", "ir": payload["ir"]},
+        # An ortho camera auto-fits against the output aspect. Passing the file's own render
+        # resolution means the viewport frames the shot the way the render will, instead of
+        # against a default that happens to be right only for 16:9.
+        render_cfg={"resolution": [scene.render.resolution_x, scene.render.resolution_y]},
+    )
     took = (time.perf_counter() - began) * 1000
 
-    scene = bpy.context.scene
     scene.frame_start = 1
     scene.frame_end = stats.get("frames", scene.frame_end)
     return f"{stats.get('frames', '?')} frames · {took:.0f}ms"
@@ -274,6 +297,26 @@ def _is_subject(obj):
             and not obj.name.endswith(STAGING_SUFFIXES))
 
 
+def _view3d_override(context):
+    """A context override that `view3d.*` operators will actually accept, or None.
+
+    Overriding the area alone is not enough, and the way it fails is unhelpful. These
+    operators poll for an *active region of type WINDOW inside a VIEW_3D area*, but a button
+    in the N-panel runs with `context.region` pointing at the sidebar itself (type UI). The
+    area override then lands on a viewport while the region still says sidebar, the poll
+    rejects it, and Blender reports only `Expected a view3d region`.
+
+    So the region has to be overridden alongside the area.
+    """
+    for area in context.screen.areas:
+        if area.type != "VIEW_3D":
+            continue
+        region = next((r for r in area.regions if r.type == "WINDOW"), None)
+        if region is not None:
+            return {"area": area, "region": region}
+    return None
+
+
 class BLENDED_OT_frame_subject(Operator):
     bl_idname = "blended.frame_subject"
     bl_label = "Frame"
@@ -282,10 +325,11 @@ class BLENDED_OT_frame_subject(Operator):
     def execute(self, context):
         for obj in context.scene.collection.all_objects:
             obj.select_set(_is_subject(obj))
-        area = next((a for a in context.screen.areas if a.type == "VIEW_3D"), None)
-        if area is None:
+        override = _view3d_override(context)
+        if override is None:
+            self.report({"WARNING"}, "No 3D viewport to frame in")
             return {"CANCELLED"}
-        with context.temp_override(area=area):
+        with context.temp_override(**override):
             bpy.ops.view3d.view_selected()
         return {"FINISHED"}
 
@@ -296,11 +340,11 @@ class BLENDED_OT_look_through_camera(Operator):
     bl_description = "Look through the scene camera — the framing the shot is composed for"
 
     def execute(self, context):
-        area = next((a for a in context.screen.areas if a.type == "VIEW_3D"), None)
-        if area is None or context.scene.camera is None:
+        override = _view3d_override(context)
+        if override is None or context.scene.camera is None:
             self.report({"ERROR"}, "No camera in the scene")
             return {"CANCELLED"}
-        with context.temp_override(area=area):
+        with context.temp_override(**override):
             bpy.ops.view3d.view_camera()
         return {"FINISHED"}
 

@@ -48,6 +48,17 @@ def load(path: Path) -> SceneIR:
         source = Path(asset.source)
         if not source.is_absolute():
             asset.source = str((path.parent / source).resolve())
+        if asset.morph_target and not Path(asset.morph_target).is_absolute():
+            asset.morph_target = str((path.parent / asset.morph_target).resolve())
+
+    # Same treatment for the backdrop image, and for the same reason: the backend receives
+    # only absolute paths, because Blender re-resolves a relative one against the saved
+    # .blend and a failed image load renders as flat magenta with no error anywhere.
+    backdrop = scene.environment.backdrop
+    if backdrop.image:
+        image = Path(backdrop.image)
+        if not image.is_absolute():
+            backdrop.image = str((path.parent / image).resolve())
     return scene
 
 
@@ -79,14 +90,20 @@ def resolve_textures(ir: dict, cache_root: Path) -> dict:
 
 
 def make_stage_job(scene: SceneIR, stage, *, out_dir: Path,
-                   cache_root: Path | None = None) -> dict:
+                   cache_root: Path | None = None, blend_dir: Path | None = None) -> dict:
     """Build an engine job for one pipeline stage.
 
     The stage's suppressions are applied to a *copy* of the IR, so what gets rendered is a view
     of the scene rather than a mutation of it. The scene file is never rewritten to render a
     stage — a blocking pass must not be able to clay your materials permanently.
+
+    `blend_dir` separates the openable artifact from the watchable one. They are used
+    differently — you scrub renders and you open .blends — and a renders directory holding
+    five stages' worth of both is tedious to read. Defaults to `out_dir` so a caller that does
+    not care keeps the old single-directory behaviour.
     """
     out_dir = Path(out_dir).resolve()
+    blends = Path(blend_dir).resolve() if blend_dir else out_dir
     ir = stage.apply(scene.model_dump(mode="json"))
     ir = resolve_textures(ir, Path(cache_root or ".cache"))
 
@@ -116,7 +133,7 @@ def make_stage_job(scene: SceneIR, stage, *, out_dir: Path,
         render["output"] = str(out_dir / f"{stem}_")
 
     return {
-        "blend_out": str(out_dir / f"{stem}.blend"),
+        "blend_out": str(blends / f"{stem}.blend"),
         "scene": {"kind": "scene_ir", "ir": ir},
         "render": render,
         "probes": list(stage.probes),
@@ -124,10 +141,12 @@ def make_stage_job(scene: SceneIR, stage, *, out_dir: Path,
 
 
 def make_job(scene: SceneIR, *, quality: str, out_dir: Path, media: str = "video",
-             cache_root: Path | None = None, engine: str = "eevee") -> dict:
+             cache_root: Path | None = None, engine: str = "eevee",
+             blend_dir: Path | None = None) -> dict:
     """Build an engine job from a validated scene."""
     settings = QUALITY[quality]
     out_dir = Path(out_dir).resolve()
+    blends = Path(blend_dir).resolve() if blend_dir else out_dir
     width, height = settings["resolution"]
     suffix = "mp4" if media == "video" else ""
     # The engine belongs in the filename. Without it an EEVEE preview silently overwrites a
@@ -140,7 +159,7 @@ def make_job(scene: SceneIR, *, quality: str, out_dir: Path, media: str = "video
     ir = resolve_textures(ir, Path(cache_root or ".cache"))
 
     return {
-        "blend_out": str(out_dir / f"{scene.name}.blend"),
+        "blend_out": str(blends / f"{scene.name}.blend"),
         "scene": {"kind": "scene_ir", "ir": ir},
         "render": {
             "engine": "BLENDER_EEVEE",

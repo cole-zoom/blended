@@ -65,7 +65,7 @@ ln -sf ~/Documents/Workspace/blended/addon/blended_live.py \
 ```
 
 Then in Blender: **Edit ▸ Preferences ▸ Add-ons**, search `blended`, tick it. Confirm it reads
-**version 2.0.0**.
+**version 2.0.2**.
 
 ---
 

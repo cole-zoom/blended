@@ -38,12 +38,22 @@ def sample_frames(scene, count=DEFAULT_SAMPLES):
 
 
 def _subject_objects(scene, names=None):
-    """Mesh objects making up the subject, excluding staging (floor, fog, outlines)."""
+    """Renderable objects making up the subject, excluding staging.
+
+    `backdrop` is staging: it is deliberately oversized so a camera move cannot slide the
+    frame off its edge, so counting it as subject makes the framing probe report that the
+    subject overflows the frame on every single frame — technically true of the card, useless
+    as a statement about the shot.
+
+    Curves count as subject too. A morphing glyph stays a curve so Blender can re-fill it each
+    frame, and it is often the hero of the shot — excluding it would mean framing and coverage
+    silently ignore the one object the piece is about.
+    """
     excluded_suffixes = ("_outline", "_lineart")
-    excluded_names = {"floor", "atmosphere"}
+    excluded_names = {"floor", "atmosphere", "backdrop"}
     out = []
     for obj in scene.collection.all_objects:
-        if obj.type != "MESH":
+        if obj.type not in ("MESH", "CURVE"):
             continue
         if obj.name in excluded_names or obj.name.endswith(excluded_suffixes):
             continue

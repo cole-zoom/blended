@@ -88,6 +88,69 @@ class SpinParams(Params):
 Timing = Literal["fixed", "stretchable"]
 
 
+class MoveParams(Params):
+    """Translate between two offsets, in units of the asset's normalised width.
+
+    Offsets, not absolute positions: the asset is already centred, so its resting place is 0.
+    `end_x: -0.404` reads as "left by 40% of the wordmark's width" and stays correct if the
+    artwork is re-traced at a different size.
+    """
+
+    start_x: float = Field(default=0.0, description="Start offset, asset widths.")
+    end_x: float = Field(default=0.0, description="End offset, asset widths.")
+    start_z: float = Field(default=0.0, description="Vertical start offset, asset widths.")
+    end_z: float = Field(default=0.0)
+    easing: Easing = "ease_in_out"
+
+
+class RevealParams(Params):
+    """Sweep a wipe edge across the target. Everything left of the edge is visible.
+
+    Positions are asset widths from the asset's centre, so -0.5 is its left edge and +0.5 its
+    right. Running `end_x` below `start_x` un-reveals, which is how the reverse beat is built
+    without a second action.
+    """
+
+    start_x: float = Field(default=-0.5, description="Edge start, asset widths from centre.")
+    end_x: float = Field(default=0.5, description="Edge end, asset widths from centre.")
+    easing: Easing = "ease_in_out"
+
+
+class FadeParams(Params):
+    """Animate a flat material's opacity.
+
+    Distinct from `object.reveal`: a wipe uncovers an object with a moving edge, a fade changes
+    how present the whole of it is. The two multiply into the same alpha, so an object can be
+    doing both at once without either action knowing about the other.
+    """
+
+    start: float = Field(default=0.0, ge=0, le=1)
+    end: float = Field(default=1.0, ge=0, le=1)
+    easing: Easing = "ease_out_strong"
+
+
+class MorphParams(Params):
+    """Drive a shape key built at asset time by `morph_target`.
+
+    Only the blend value is animated here. The correspondence between the two outlines —
+    contour pairing, resampling, winding and start-index alignment — is compiled once when the
+    asset is built, so nothing expensive or non-deterministic happens per frame.
+    """
+
+    key: str = Field(default="morph", description="Shape key name.")
+    start: float = Field(default=0.0, ge=0, le=1)
+    end: float = Field(default=1.0, ge=0, le=1)
+    easing: Easing = "ease_in_out"
+
+
+class TintParams(Params):
+    """Fade a flat material's colour. Linear RGBA, not sRGB hex."""
+
+    start_color: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
+    end_color: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
+    easing: Easing = "ease_in_out"
+
+
 @dataclass(frozen=True)
 class Action:
     name: str
@@ -128,6 +191,50 @@ ACTIONS: dict[str, Action] = {
             writes=("transform",),
             timing="stretchable",
             tags=("object", "motion"),
+            accepts=("asset",),
+        ),
+        Action(
+            name="object.move",
+            params=MoveParams,
+            writes=("transform",),
+            timing="stretchable",
+            tags=("object", "motion", "2d"),
+            accepts=("asset",),
+        ),
+        Action(
+            name="object.reveal",
+            params=RevealParams,
+            # `wipe` rather than `transform`: a reveal and a move can run on the same object at
+            # the same time without conflicting, because they animate different channels.
+            writes=("wipe",),
+            timing="stretchable",
+            tags=("object", "reveal", "2d"),
+            accepts=("asset",),
+        ),
+        Action(
+            name="object.fade",
+            # `opacity`, not `wipe` — the two multiply into one alpha, so a letter can fade in
+            # while a wipe crosses it without a channel conflict being reported.
+            writes=("opacity",),
+            params=FadeParams,
+            timing="stretchable",
+            tags=("object", "reveal", "2d"),
+            accepts=("asset",),
+        ),
+        Action(
+            name="object.morph",
+            params=MorphParams,
+            writes=("shape",),
+            timing="stretchable",
+            tags=("object", "transform", "2d"),
+            accepts=("asset",),
+        ),
+        Action(
+            name="object.tint",
+            params=TintParams,
+            writes=("color",),
+            timing="stretchable",
+            tags=("object", "mood", "2d"),
             accepts=("asset",),
         ),
         Action(

@@ -103,9 +103,23 @@ REFERENCE_WORLD = {"color": [0.18, 0.18, 0.19, 1.0], "strength": 1.0}
 
 
 def suppress_materials(ir: dict) -> dict:
-    """Clay everything, and drop the outline. Judge form, not finish."""
+    """Clay everything, and drop the outline. Judge form, not finish.
+
+    A `flat` asset is the exception, and stays flat. Two reasons, both decisive:
+
+    * Clay is a Principled surface, and a 2D scene carries no lights — claying a flat asset
+      renders it black, which is not a neutral view of the model, it is no view at all.
+    * Shadeless emission has no finish to be distracted by. Its only material decision is its
+      colour, so neutralising the colour is the whole of the suppression here.
+
+    Keeping it flat also preserves the wipe chain that `object.reveal` drives, which a clay
+    swap would silently delete out from under the tracks.
+    """
     for asset in ir.get("assets", []):
-        asset.update(copy.deepcopy(CLAY))
+        if asset.get("material") == "flat":
+            asset["base_color"] = [1.0, 1.0, 1.0, 1.0]
+        else:
+            asset.update(copy.deepcopy(CLAY))
         asset["outline"] = {"mode": "none", "thickness": 0.0}
     floor = (ir.get("environment") or {}).get("floor")
     if floor:
@@ -114,10 +128,17 @@ def suppress_materials(ir: dict) -> dict:
 
 
 def suppress_environment(ir: dict) -> dict:
-    """No floor, no fog. The subject alone against the void."""
+    """No floor, no fog, no backdrop. The subject alone against the void.
+
+    The backdrop goes for the same reason the floor does: a full-frame photographic gradient
+    behind the subject is exactly the thing that makes a blocking pass look finished, and a
+    frame that looks finished gets judged on its look instead of on its timing.
+    """
     env = ir.setdefault("environment", {})
     if env.get("floor"):
         env["floor"]["enabled"] = False
+    if env.get("backdrop"):
+        env["backdrop"]["enabled"] = False
     env["volumetrics"] = {"enabled": False}
     return ir
 
@@ -137,12 +158,30 @@ def suppress_post(ir: dict) -> dict:
 
     Also load-bearing: `post.bloom` raises in the backend on Blender 5.2, so a scene with bloom
     enabled would crash at blocking rather than merely looking wrong.
+
+    `view_transform` survives, because it is colour management rather than an effect. Dropping
+    it would make every pre-lighting stage of a 2D scene render through a filmic curve the
+    finished piece does not use — so a white mark would read grey at blocking and white at
+    final, and the earlier stages would be lying about the thing they exist to judge.
     """
-    ir["post"] = {"bloom": 0.0}
+    ir["post"] = {"bloom": 0.0,
+                  "view_transform": (ir.get("post") or {}).get("view_transform", "agx")}
     return ir
 
 
 def turntable(ir: dict, revolutions: float = 1.0) -> dict:
+    """Spin the subject to inspect its form — unless there is no form to inspect.
+
+    An orthographic scene is a flat one. Rotating flat artwork about Z does not reveal a
+    second view of it, it swings the letters edge-on and then shows you their mirror image,
+    which is worse than useless for judging whether the model is right.
+    """
+    if (ir.get("camera") or {}).get("projection") == "ortho":
+        return ir
+    return _turntable(ir, revolutions)
+
+
+def _turntable(ir: dict, revolutions: float = 1.0) -> dict:
     """Replace the scene's camera move with a full orbit, for inspecting geometry.
 
     The authored camera move is designed to flatter the subject; a turntable is designed to
@@ -204,7 +243,10 @@ STAGES: dict[str, Stage] = {
             name="assets",
             question="Is the model right?",
             owns=("assets[].id", "assets[].source", "assets[].extrude", "assets[].bevel",
-                  "assets[].resolution", "assets[].target_size"),
+                  "assets[].resolution", "assets[].target_size", "assets[].split",
+                  # The morph target is geometry: it decides what shape exists to blend
+                  # towards, which is settled with the model, not with the motion.
+                  "assets[].morph_target", "assets[].morph_apply_to", "assets[].morph_scale"),
             suppress=("environment", "materials", "lighting", "post", "turntable"),
             media="stills",
             resolution=(720, 720),
@@ -220,7 +262,11 @@ STAGES: dict[str, Stage] = {
                   "lights[].id", "lights[].type", "lights[].azimuth",
                   "lights[].elevation", "lights[].distance", "lights[].spot_size",
                   "environment.floor.enabled", "environment.floor.size",
-                  "environment.floor.offset"),
+                  "environment.floor.offset",
+                  # Same split as the floor: whether the card is there and where it sits is
+                  # composition; what is printed on it is surface.
+                  "environment.backdrop.enabled", "environment.backdrop.distance",
+                  "environment.backdrop.overscan"),
             suppress=("environment", "materials", "post"),
             media="video",
             resolution=(640, 360),
@@ -238,7 +284,9 @@ STAGES: dict[str, Stage] = {
                   "environment.floor.wetness", "environment.floor.bump",
                   "environment.floor.wet_roughness", "environment.floor.wet_flatten",
                   "environment.floor.ripples", "environment.floor.ripple_scale",
-                  "environment.floor.ripple_speed", "environment.floor.ripple_detail"),
+                  "environment.floor.ripple_speed", "environment.floor.ripple_detail",
+                  "environment.backdrop.image", "environment.backdrop.color",
+                  "environment.backdrop.strength"),
             suppress=("lighting",),
             media="stills",
             resolution=(1280, 720),

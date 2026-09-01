@@ -39,7 +39,12 @@ regenerations. See ARCHITECTURE §1.
 | `bound_box` ignores modifiers | Measure through `obj.evaluated_get(depsgraph)` |
 | `transform_apply` does not rescale modifier parameters | Add geometry modifiers *after* normalization, or their strength silently shrinks by the normalization factor |
 | `bpy.ops.import_curve.svg` needs `addon_utils.enable("io_curve_svg")` under `--factory-startup` | `ingest.svg.ensure_importer()` |
+| **The SVG importer creates one curve object per SVG *element***, so the same logo arrives as 1 object or as 12 depending only on how it was exported | `ingest.svg.join_curves()` merges them before anything else looks. Joining (not parenting) is what concatenates splines into one datablock — the representation `find_x_gap`/`split_at_x` need, and splines carry their cyclic nesting so counters stay holes |
+| **The marks/wordmark splitter always splits something.** Given a single-word wordmark there is no marks gap to find, so it cuts at the widest gap *between letters* and returns two arbitrary halves named `_marks`/`_text` | Set `"split": "none"` on the asset. Owned by the `assets` stage |
+| **A "logo SVG" exported from a slide deck contains no vector art** — a 960×540 frame, axis-aligned rectangles, and base64 bitmaps. It imports as a few flat rectangles | Check before trusting one: `<path>` elements whose `d` is 5–7 straight-line commands are clip frames. Real artwork has curve ops (`c`/`s`/`q`). See `projects/*/art/README.md` for the recovery route |
 | Freestyle emits no strokes under EEVEE in 5.2 (`strokes set empty`) | Not a usable outline backend here |
+| **Blender 5.2's default view transform is AgX** — a filmic curve. Authored pure white renders as mid grey and a brand hex does not survive as itself | Right for 3D, wrong for flat 2D. Set `post.view_transform: "standard"`. Verified settable: Standard, AgX, Filmic, Raw |
+| **`camera.matrix_world` is stale right after you position a camera** — it reads as identity until the depsgraph runs, so anything derived from it lands somewhere silently wrong | Derive direction from `rotation_euler.to_quaternion()`, which is the data you just set. Same trap as `bound_box` before a view-layer update |
 | **A world Volume Scatter renders the frame completely black** in EEVEE 5.2 — at any density (tested to 0.001) and any light energy | Use a bounded volume box instead (`staging.add_atmosphere`) |
 | Volumetric shadows cost ~10× render time, and `volumetric_samples` is *not* the driver (96→32 saved only 13%) | Budget for it; don't tune samples expecting a win |
 | A `SUN` lamp ignores position entirely — only rotation matters | `add_sun` takes no `distance`; accepting one would imply an effect it cannot have |
@@ -114,6 +119,7 @@ would throw away the open file.
 
 | For | Read |
 |---|---|
+| **Timing and easing any motion** | the `motion-easing` skill — load it before writing `tracks` |
 | Getting set up / live reload | [docs/setup.md](docs/setup.md) |
 | Writing a scene | [docs/authoring.md](docs/authoring.md) — the traps, not just the fields |
 | Field reference | `schemas/` — generated, never hand-edited |

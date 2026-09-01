@@ -18,7 +18,11 @@
         "assets[].extrude",
         "assets[].bevel",
         "assets[].resolution",
-        "assets[].target_size"
+        "assets[].target_size",
+        "assets[].split",
+        "assets[].morph_target",
+        "assets[].morph_apply_to",
+        "assets[].morph_scale"
       ],
       "probes": [
         "geometry"
@@ -51,7 +55,10 @@
         "lights[].spot_size",
         "environment.floor.enabled",
         "environment.floor.size",
-        "environment.floor.offset"
+        "environment.floor.offset",
+        "environment.backdrop.enabled",
+        "environment.backdrop.distance",
+        "environment.backdrop.overscan"
       ],
       "probes": [
         "framing",
@@ -133,7 +140,10 @@
         "environment.floor.ripples",
         "environment.floor.ripple_scale",
         "environment.floor.ripple_speed",
-        "environment.floor.ripple_detail"
+        "environment.floor.ripple_detail",
+        "environment.backdrop.image",
+        "environment.backdrop.color",
+        "environment.backdrop.strength"
       ],
       "probes": [
         "materials"

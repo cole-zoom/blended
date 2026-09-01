@@ -44,7 +44,7 @@
         },
         "extrude": {
           "default": 0.05,
-          "exclusiveMinimum": 0,
+          "minimum": 0,
           "title": "Extrude",
           "type": "number"
         },
@@ -56,7 +56,8 @@
           "default": "plain",
           "enum": [
             "plain",
-            "worn"
+            "worn",
+            "flat"
           ],
           "title": "Material",
           "type": "string"
@@ -67,6 +68,36 @@
           "minimum": 0,
           "title": "Metallic",
           "type": "number"
+        },
+        "morph_apply_to": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Morph Apply To"
+        },
+        "morph_scale": {
+          "default": 1.0,
+          "exclusiveMinimum": 0,
+          "title": "Morph Scale",
+          "type": "number"
+        },
+        "morph_target": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Morph Target"
         },
         "outline": {
           "$ref": "#/$defs/Outline"
@@ -86,6 +117,16 @@
         },
         "source": {
           "title": "Source",
+          "type": "string"
+        },
+        "split": {
+          "default": "auto",
+          "enum": [
+            "auto",
+            "none",
+            "glyphs"
+          ],
+          "title": "Split",
           "type": "string"
         },
         "target_size": {
@@ -114,6 +155,75 @@
         "source"
       ],
       "title": "Asset",
+      "type": "object"
+    },
+    "Backdrop": {
+      "additionalProperties": false,
+      "description": "A flat card behind the subject, filling the frame.\n\nNot the world colour and not an HDRI. Both of those light the scene as well as being seen,\nwhich is wrong here twice over: a 2D scene has no lighting to contribute to, and the brand\nbackdrop is a specific photographic gradient rather than anything a colour or a procedural\nramp reproduces. A card is also the only one of the three that can be *animated* \u2014 moved,\nscaled or cross-faded \u2014 which later beats need.\n\nShadeless, like everything else in a 2D scene, so it renders as exactly the pixels of its\nsource image.",
+      "properties": {
+        "color": {
+          "default": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "maxItems": 4,
+          "minItems": 4,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Color",
+          "type": "array"
+        },
+        "distance": {
+          "default": 5.0,
+          "exclusiveMinimum": 0,
+          "title": "Distance",
+          "type": "number"
+        },
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "image": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image"
+        },
+        "overscan": {
+          "default": 1.6,
+          "minimum": 1.0,
+          "title": "Overscan",
+          "type": "number"
+        },
+        "strength": {
+          "default": 1.0,
+          "minimum": 0,
+          "title": "Strength",
+          "type": "number"
+        }
+      },
+      "title": "Backdrop",
       "type": "object"
     },
     "Camera": {
@@ -156,6 +266,28 @@
           "title": "Motion Blur",
           "type": "boolean"
         },
+        "ortho_scale": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ortho Scale"
+        },
+        "projection": {
+          "default": "perspective",
+          "enum": [
+            "perspective",
+            "ortho"
+          ],
+          "title": "Projection",
+          "type": "string"
+        },
         "shutter": {
           "default": 0.5,
           "exclusiveMinimum": 0,
@@ -194,6 +326,9 @@
     "Environment": {
       "additionalProperties": false,
       "properties": {
+        "backdrop": {
+          "$ref": "#/$defs/Backdrop"
+        },
         "floor": {
           "anyOf": [
             {
@@ -495,6 +630,17 @@
           "minimum": 0,
           "title": "Bloom Threshold",
           "type": "number"
+        },
+        "view_transform": {
+          "default": "agx",
+          "enum": [
+            "agx",
+            "standard",
+            "filmic",
+            "raw"
+          ],
+          "title": "View Transform",
+          "type": "string"
         }
       },
       "title": "Post",
