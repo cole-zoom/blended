@@ -3,6 +3,41 @@
 Read [ARCHITECTURE.md](ARCHITECTURE.md) first. This file is the short list of things that are easy
 to get wrong.
 
+## Cold start — read this first
+
+**What this is.** A compiler for Blender animations. You author `scene.json` (Scene IR); a
+deterministic backend turns it into a `.blend` and a render. You never write `bpy` outside
+`src/blended_backend/`.
+
+**The loop.** Author or patch → `check` → `stage` → *look at the frames* → `approve` → next
+stage. The looking is not optional; most of what goes wrong in this codebase is invisible in
+the code and obvious in a rendered frame. Several entries in the gotchas table below were found
+that way and could not have been found any other way.
+
+```bash
+uv run blended check   scene.json          # Tier 1, instant, no Blender
+uv run blended stage   blocking scene.json # build + render at that stage's fidelity
+uv run blended approve blocking scene.json # freeze the fields that stage owns
+uv run blended status  scene.json          # what is approved, what has drifted
+```
+
+**Read in this order:**
+
+1. This file — the invariants and the traps
+2. [docs/authoring.md](docs/authoring.md) — writing a scene
+3. `schemas/` — the field reference, generated, never hand-edited
+4. The `motion-easing` skill before writing any `tracks`
+5. **`projects/*/README.md` and `projects/*/scenes/*/DECISIONS.md`** — if a project exists
+
+**On projects.** `projects/` is gitignored: it holds client art, scenes and renders, and this
+repo is public. So a project will *not* appear in `git status` or in any diff, but it is on
+disk — **list the directory before assuming there is no work in progress.** Each project keeps
+its own README (what it is, where it stands) and a `DECISIONS.md` per scene recording what was
+chosen, what was rejected, and what looked right and rendered wrong.
+
+**Never put client specifics in this file, in `docs/`, or in any commit message.** They belong
+in the project folder, which is ignored. This file is public.
+
 ## The three hard rules
 
 **1. Never hand-write `bpy` outside `src/blended_backend/`.**
