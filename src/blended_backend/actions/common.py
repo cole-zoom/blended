@@ -14,6 +14,20 @@ EASINGS = {
     "ease_in": ("SINE", "EASE_IN"),
     "ease_out": ("SINE", "EASE_OUT"),
     "ease_in_out": ("SINE", "EASE_IN_OUT"),
+    # SINE is a gentle curve — over a short move it is very close to linear and reads as
+    # "no easing at all". These are the same shapes with real acceleration in them.
+    # QUART is the workhorse; EXPO is extreme, and settles so slowly it reads as drifting,
+    # which is what a soft, dreamy move wants.
+    "ease_in_strong": ("QUART", "EASE_IN"),
+    "ease_out_strong": ("QUART", "EASE_OUT"),
+    "ease_in_out_strong": ("QUART", "EASE_IN_OUT"),
+    "drift_in": ("EXPO", "EASE_IN"),
+    "drift_out": ("EXPO", "EASE_OUT"),
+    "drift_in_out": ("EXPO", "EASE_IN_OUT"),
+    # Overshoots the target and settles back. The cheapest way to stop motion reading as
+    # machine-generated: nothing with mass stops dead on its mark.
+    "overshoot_out": ("BACK", "EASE_OUT"),
+    "overshoot_in_out": ("BACK", "EASE_IN_OUT"),
 }
 
 

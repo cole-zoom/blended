@@ -14,6 +14,11 @@ IMPLEMENTATIONS = {
     "light.ramp": light.ramp,
     "object.spin": obj.spin,
     "object.hold": obj.hold,
+    "object.move": obj.move,
+    "object.reveal": obj.reveal,
+    "object.fade": obj.fade,
+    "object.morph": obj.morph,
+    "object.tint": obj.tint,
 }
 
 

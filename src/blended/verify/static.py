@@ -7,6 +7,8 @@ interface for whoever is authoring scenes (ARCHITECTURE §12).
 
 from __future__ import annotations
 
+import re
+
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -62,6 +64,12 @@ def check(scene: SceneIR) -> Report:
     return report
 
 
+#: Sub-objects of a glyph-split asset, e.g. `word_g0`. The host cannot count the glyphs — that
+#: needs the SVG imported, which needs Blender — so the *naming contract* is validated here and
+#: the exact count is left to the backend, which errors by name if a glyph does not exist.
+_GLYPH_TARGET = re.compile(r"^(?P<asset>.+)_g(?P<index>\d+)$")
+
+
 def _kind_of(scene: SceneIR, target: str) -> str | None:
     if target == scene.camera.id:
         return "camera"
@@ -69,6 +77,10 @@ def _kind_of(scene: SceneIR, target: str) -> str | None:
         return "asset"
     if any(lt.id == target for lt in scene.lights):
         return "light"
+    if match := _GLYPH_TARGET.match(target):
+        asset = next((a for a in scene.assets if a.id == match["asset"]), None)
+        if asset is not None and asset.split == "glyphs":
+            return "asset"
     return None
 
 
