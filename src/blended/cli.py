@@ -255,6 +255,10 @@ def check(scene_file: Path) -> None:
 @click.option("--blend-out", type=click.Path(path_type=Path), default=None,
               help="Directory for the .blend. Defaults to <scene-dir>/blend.")
 @click.option("--stills", is_flag=True, help="Render a PNG sequence instead of video.")
+@click.option("--alpha", is_flag=True,
+              help="Render the subject on transparency, for compositing elsewhere. Also "
+                   "switches the backdrop off — a matte with the background still burned "
+                   "into it is not a matte. Implies --stills, since H.264 carries no alpha.")
 @click.option("--engine", type=click.Choice(["eevee", "cycles"]), default="eevee",
               show_default=True,
               help="cycles is a path tracer — real GI and soft shadows, far slower.")
@@ -263,7 +267,7 @@ def check(scene_file: Path) -> None:
 @click.option("--build-only", is_flag=True, help="Build the .blend and stop before rendering.")
 @click.option("--verbose", is_flag=True)
 def render(scene_file: Path, quality: str, out: Path | None, blend_out: Path | None,
-           stills: bool, engine: str, samples: int | None, build_only: bool,
+           stills: bool, alpha: bool, engine: str, samples: int | None, build_only: bool,
            verbose: bool) -> None:
     """Compile a scene to a .blend and render it."""
     from blended.project import load, make_job
@@ -281,10 +285,19 @@ def render(scene_file: Path, quality: str, out: Path | None, blend_out: Path | N
         click.echo("\nTier 1 failed — not building.", err=True)
         sys.exit(1)
 
+    if alpha:
+        # A matte with the background still burned into it is not a matte, so the backdrop
+        # goes with it. H.264 carries no alpha channel, so the output has to be a PNG
+        # sequence regardless of what was asked for.
+        stills = True
+        scene.environment.backdrop.enabled = False
+
     out_dir = (out or scene_file.parent / "renders").resolve()
     blend_dir = (blend_out or scene_file.parent / "blend").resolve()
     job = make_job(scene, quality=quality, out_dir=out_dir, blend_dir=blend_dir,
                    media="stills" if stills else "video", engine=engine)
+    if alpha:
+        job["render"]["film_transparent"] = True
     if engine == "cycles":
         job["render"]["engine"] = "CYCLES"
         job["render"]["device"] = "GPU"
