@@ -129,6 +129,7 @@ object.morph   object.tint  object.spin   object.hold
 | Writing a scene — the traps, not just the fields | [docs/authoring.md](docs/authoring.md) |
 | Timing and easing motion so it reads as authored | `.claude/skills/motion-easing/` |
 | Field reference | `schemas/` — generated, never hand-edited |
+| Asset-prep scripts that aren't part of the compiler | [tools/](tools/) |
 | The design, and why it is shaped this way | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | Conventions and the things that are easy to get wrong | [CLAUDE.md](CLAUDE.md) |
 | What is built and what is next | [ROADMAP.md](ROADMAP.md) |
